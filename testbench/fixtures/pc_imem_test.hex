@@ -1,0 +1,6 @@
+// Fixture for tb_pc_instr_mem.v: arbitrary distinct words (not real programs).
+// word 0 .. 3 at byte addresses 0x0, 0x4, 0x8, 0xC
+11111111
+22222222
+33333333
+44444444
