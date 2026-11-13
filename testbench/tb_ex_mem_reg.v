@@ -88,6 +88,7 @@ module tb_ex_mem_reg;
     endfunction
 
     reg [WIDTH-1:0] alu_entry, sw_entry, lw_entry;
+    reg [WIDTH-1:0] walk_pattern;
 
     initial begin
         // Construct representative instruction bundles:
@@ -182,14 +183,50 @@ module tb_ex_mem_reg;
         end
 
         // ====================================================================
-        // 7. Walking Bit Test: Every Field Holding and Clearing Together
+        // 7. Hold Priority Over Invalid-Input Bubble (valid_in=0 with en=0)
+        //    Proves hold has priority over invalid-input bubble capture.
+        // ====================================================================
+        // Capture valid ALU entry first
+        en = 1; flush = 0;
+        entry = alu_entry;
+        tick_and_check(alu_entry, "Capture valid ALU entry before bubble-hold test");
+
+        // Set en=0 and present an invalid-input bubble (valid_in=0 with side-effects high)
+        en = 0;
+        entry = pack(32'hDEADBEEF, 32'hCAFE1234, 5'd15, 32'h00002000, 32'h00002004,
+                     1'b1, 1'b1, 1'b1, 1'b1, 1'b0); // valid=0
+        tick_and_check(alu_entry, "valid_in=0 with en=0 holds existing entry (hold beats bubble)");
+        tick_and_check(alu_entry, "Bubble-hold persists across multiple cycles");
+
+        // Now enable capture (en=1) with valid_in=0: bubble is now captured and clears outputs
+        en = 1;
+        tick_and_check({WIDTH{1'b0}}, "en=1 with valid_in=0 captures bubble and clears bundle");
+
+        // ====================================================================
+        // 8. Comprehensive Walking Bit Test:
+        //    For each payload bit:
+        //      - Capture: active entry with bit set is captured.
+        //      - Hold: input is modified with en=0; captured value holds.
+        //      - Clear: assert flush and verify entire bundle clears.
         // ====================================================================
         for (i = 0; i < WIDTH; i = i + 1) begin
-            // Test single-bit active valid entries
-            entry = {WIDTH{1'b0}};
-            entry[0] = 1'b1; // valid_in = 1
-            entry[i] = 1'b1;
-            tick_and_check(entry, "Walking bit active capture");
+            // 1. Capture single-bit payload with valid_in=1
+            walk_pattern = {WIDTH{1'b0}};
+            walk_pattern[0] = 1'b1; // valid_in = 1
+            walk_pattern[i] = 1'b1; // payload bit i
+            entry = walk_pattern;
+            en = 1; flush = 0;
+            tick_and_check(walk_pattern, "Walking bit active capture");
+
+            // 2. Hold: change input with en=0 and verify captured bundle remains unchanged
+            en = 0;
+            entry = ~walk_pattern;
+            tick_and_check(walk_pattern, "Walking bit hold with inverted input");
+
+            // 3. Clear: assert flush and verify entire bundle clears
+            flush = 1;
+            tick_and_check({WIDTH{1'b0}}, "Walking bit clear with flush");
+            flush = 0; en = 1;
         end
 
         // Clean finish

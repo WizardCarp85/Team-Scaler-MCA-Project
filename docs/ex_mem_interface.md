@@ -35,8 +35,9 @@ Evaluated on each rising clock edge:
    - Clears every output to `0`. A flush beats a hold (`en=0`).
 2. **Hold (`en == 0`)**:
    - All outputs hold their previous values across clock cycles.
+   - **Hold Priority over Bubble Capture**: When `en == 0`, the register holds its current contents regardless of `valid_in` (even if `valid_in == 0`).
 3. **Bubble Capture (`en == 1 && valid_in == 0`)**:
-   - Capturing an invalid input clears every output to `0` like a flush, ensuring bubbles cannot assert side-effects.
+   - When capture is enabled (`en == 1`), capturing an invalid input clears every output to `0` like a flush, ensuring bubbles cannot assert side-effects.
 4. **Active Capture (`en == 1 && valid_in == 1`)**:
    - Captures the complete valid bundle from `*_in` to `*_out`.
 
@@ -54,7 +55,11 @@ The `ex_stage` module (`rtl/stages/ex_stage.v`) produces outputs that are handle
 
 ---
 
-## 5. Downstream Integration (M4 & M5)
+## 5. Downstream Integration & Hazard Control Coordination (M4 & M5)
 
 - **M4 (Memory Stage Integration, Issue #18)**: Connects `alu_result_out` (address), `store_data_out` (write data), `mem_read_out`, and `mem_write_out` to data memory. Propagates `rd_out`, `reg_write_out`, `wb_from_mem_out`, `pc_out`, `pc_plus4_out`, and `valid_out` to MEM/WB. *(Agreement pending team confirmation)*.
-- **M5 (Forwarding & Hazard Control, Issues #22, #24, #25)**: Monitors `rd_out`, `reg_write_out`, and `valid_out` for EX/MEM-to-EX forwarding. Controls the `flush` and `en` inputs of `ex_mem_reg` during stalls or pipeline redirects. *(Agreement pending team confirmation)*.
+- **M5 (Hazard, Forwarding & Stall/Flush Coordination, Issues #22, #24, #25)**:
+  - **Careful Hold/Flush Coordination Required**: M5 must coordinate EX/MEM `en` (hold) and `flush` carefully:
+    1. **Memory Re-execution Prevention**: A held valid memory operation (`mem_read` or `mem_write`) must not be executed repeatedly by downstream memory stages during a multi-cycle stall or wait state.
+    2. **Protection of Older In-Flight Instructions**: An EX-resolved branch redirect or a load-use stall must flush only the younger pipeline boundaries (e.g., IF/ID and ID/EX) and must not accidentally discard or corrupt older instructions advancing through or held in EX/MEM.
+  - **Pending Agreement**: The precise top-level stall, flush, and re-execution suppression control policy is pending integration agreement with M4 and M5.
