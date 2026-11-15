@@ -28,57 +28,55 @@ The following block diagram illustrates the datapath flow within `ex_stage.v`, s
 
 ```text
        ========================= EX STAGE DATAPATH =========================
-       [Proposed Integration Interfaces with ID/EX, EX/MEM, M4, and M5]
+       [Full-pipeline connections shown as proposed/pending integration]
 
-  [Proposed Inputs from ID/EX Register]
-    rs1_data_in ──┐
-    rs2_data_in ──┼────────────────────────────────┐
-    imm_in ───────┼──────────────┬─────────┐       │
-    pc_in ────────┼──────────────┼─────────┼───────┼─────────────────────────┐
-    controls ─────┼──────────────┼─────────┼───────┼──────────────────┐      │
-                  │              │         │       │                  │      │
-  [Proposed M5 Forwarding]       │         │       │                  │      │
-    forward_a ────┼────────┐     │         │       │                  │      │
-    forward_b ────┼────────┼─────┼─────────┼───────┼────────────┐     │      │
-    forward data ─┼──┬─────┼─────┼─────────┼───────┼────────┐   │     │      │
-                  ▼  ▼     ▼     │         │       │        ▼   ▼     ▼      │
-               ┌─────────────┐   │         │       │     ┌─────────────┐     │
-               │  FWD MUX A  │◄──┘         │       │     │  FWD MUX B  │◄────┘
-               └──────┬──────┘             │       │     └──────┬──────┘
-                      │                    │       │            │
-        fwd_rs1_data  ├──────────────┐     │       │            ├────────────┐
-                      │              │     │       │            │            │
-                      ▼              │     │       │            │            ▼
-                 ┌─────────┐         │     │       │            │      ┌────────────┐
-                 │ ALU OpA │         │     │       │            │      │ store_data │
-                 └────┬────┘         │     │       │            │      └─────┬──────┘
-                      │              │     │       │            │            │ (bypasses
-                      │              │     │       │            │            │  ALU mux)
-                      │              │     │       │            ▼            │
-                      │              │     │       │     ┌─────────────┐     │
-                      │              │     │       └────►│ MUX (B/Imm) │◄────┘
-                      │              │     │     alu_src │  (alu_src)  │ (fwd_rs2_data)
-                      │              │     │             └──────┬──────┘
-                      │              │     │                    │
-                      │              │     │                    ▼
-                      │              │     │               ┌─────────┐
-                      │              │     │               │ ALU OpB │
-                      │              │     │               └────┬────┘
-                      │              │     │                    │
-                      │              ▼     ▼                    ▼
-                      │       ┌───────────────┐            ┌───────────┐
-                      │       │  BRANCH_UNIT  │            │    ALU    │◄── alu_ctrl
-                      │       │   (BEQ/BNE)   │            │ (ADD/SUB) │    (from alu_control)
-                      │       └───────┬───────┘            └─────┬─────┘
-                      │               │                          │
-                      │               ├──► branch_taken          │ alu_result
-                      │               └──► branch_target         │ (or memory address)
-                      │                    [Proposed to IF / M5] │
-                      ▼                                          ▼
-  ─────────────────────────────────────────────────────────────────────────────
-  [Proposed Outputs to EX/MEM Pipeline Register (Pending M4 / M5 Integration)]
-    Bundle captures: alu_result, store_data, rd, pc, pc_plus4,
-                     mem_read, mem_write, reg_write, wb_from_mem, valid
+   rs1_data (from proposed ID/EX) ────┐
+   forwarding sources (proposed M5) ──┴──►┌───────────┐
+                                          │ FWD MUX A │──► forwarded rs1 ──┬──► ALU operand A
+                                          └───────────┘                    │
+                                                                           └──► branch operand A
+                                                                                       │
+   rs2_data (from proposed ID/EX) ────┐                                                │
+   forwarding sources (proposed M5) ──┴──►┌───────────┐                                │
+                                          │ FWD MUX B │──► forwarded rs2 ──┬───────────┼──► branch operand B
+                                          └───────────┘                    │           │
+                                                                           ├──► store_data
+                                                                           │    (bypasses ALU mux)
+                                                                           ▼           │
+   immediate (from proposed ID/EX) ───────────────────────────────────►┌─────────┐    │
+   alu_src_imm (from proposed ID/EX) ─────────────────────────────────►│  ALU B  │    │
+                                                                       │  / Imm  │    │
+                                                                       │Selector │    │
+                                                                       └────┬────┘    │
+                                                                            │         │
+                                                                            ▼         │
+                                                                      ALU operand B   │
+                                                                            │         │
+   alu_op, funct3, funct7 ──►┌─────────────┐                                │         │
+   (from proposed ID/EX)     │ ALU Control │──► alu_ctrl ──┐                │         │
+                             └─────────────┘               │                │         │
+                                                           ▼                ▼         │
+                                                      ┌─────────┐                     │
+   ALU operand A (forwarded rs1) ────────────────────►│   ALU   │                     │
+                                                      └────┬────┘                     │
+                                                           │ alu_result               │
+                                                           │                          │
+   PC (from proposed ID/EX) ───────────────────────────────┼───────────┐              │
+   immediate (from proposed ID/EX) ────────────────────────┼───────────┼──┐           │
+   branch_type, valid (from proposed ID/EX) ───────────────┼───────────┼──┼──┐        │
+                                                           │           ▼  ▼  ▼        ▼
+                                                           │       ┌───────────────┐
+                                                           │       │  BRANCH UNIT  │
+                                                           │       │   (BEQ/BNE)   │
+                                                           │       └───────┬───────┘
+                                                           │               │
+                                                           │               ├──► branch_taken  [Proposed to IF/M5]
+                                                           │               └──► branch_target [Proposed to IF/M5]
+                                                           │                    (PC + immediate)
+                                                           ▼                    ▼
+   ──────────────────────────────────────────────────────────────────────────────────
+   [Proposed EX/MEM Pipeline Register (Pending M4/M5 Integration)]
+     Captures: ALU result, store_data, and metadata (rd, PC, PC+4, mem/wb controls, valid)
 ```
 
 ---
@@ -313,12 +311,11 @@ While Milestone 3 is internally complete and thoroughly tested at the unit and s
 2. **Forwarding Multiplexers vs. Forwarding Controller (M5 Dependency)**:
    - The EX stage includes the multiplexers that consume `forward_a` and `forward_b`.
    - However, the hazard detection logic and forwarding controller that actually compares `ID/EX.rs1` / `ID/EX.rs2` against `EX/MEM.rd` / `MEM/WB.rd` resides in **Milestone 5 (Issue #24)** and is not yet integrated or confirmed.
-3. **Load-Use Data Hazard Handling (Intended Pipeline Timing)**:
+3. **Load-Use Data Hazard Handling**:
    - For a Load instruction (`LW`), the `alu_result` computed in EX and captured in `ex_mem_reg` is the memory byte *effective address*, **not** the loaded data word.
    - The actual data is only retrieved after data memory access occurs in the Memory (MEM) stage (Milestone 4).
    - Consequently, a dependent instruction immediately following `LW` cannot resolve its data dependency through EX-to-EX forwarding from `EX/MEM`.
-   - In the proposed five-stage pipeline with single-cycle synchronous memory access, the **intended approach is a one-cycle hardware interlock (stall)** inserted by the hazard unit (holding PC and IF/ID while converting ID/EX into a bubble), pending M4/M5 integration and verification.
-   - Note that this one-cycle stall is specific to the planned single-cycle memory design; alternate memory timing arrangements (e.g., multi-cycle memory, bus wait-states, or cache misses) would require their own corresponding stall durations.
+   - A **one-cycle load-use stall is the intended baseline**, subject to the memory read timing and M4/M5 integration agreement and verification.
 4. **Memory Re-Execution Prevention on Hold**:
    - When `ex_mem_reg` is stalled (`en = 0`), it holds `mem_read` or `mem_write` high. The downstream memory stage (M4, Issue #18) and stall unit (M5, Issue #25) must ensure that a held memory operation is not re-executed repeatedly across stall cycles.
 5. **Pending Agreements**:
