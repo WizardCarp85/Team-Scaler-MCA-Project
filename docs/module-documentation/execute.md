@@ -3,7 +3,7 @@
 **Project:** Team Scaler MCA Project — 5-Stage Pipelined RV32I Processor  
 **Author / Milestone:** Milestone 3 (M3) — Execution Stage Datapath & Pipeline Register  
 **Related Issue:** Issue #48 (Project Documentation & Report Preparation)  
-**Status:** M3 modules implemented, verified with Icarus Verilog, and integrated on `main`. Coordination with M4 (Memory) and M5 (Forwarding/Hazard Unit) is **pending integration agreement**.
+**Status:** M3 modules are implemented, verified with standalone Icarus Verilog simulation, and merged onto `main`. Full-core inter-stage connections and coordination with M4 (Memory) and M5 (Forwarding/Hazard Unit) represent **proposed integration interfaces pending team confirmation and verification**.
 
 ---
 
@@ -16,7 +16,7 @@ In a classic 5-stage RISC-V pipelined processor (**IF** $\rightarrow$ **ID** $\r
 3. **Branch Condition Evaluation & Target Generation**:
    - Evaluating branch equality/inequality conditions (`BEQ`, `BNE`) between source operands.
    - Calculating PC-relative branch target addresses (`PC + imm`).
-4. **Data Hazard Resolution (Datapath Multiplexers)**: Providing 2-bit dual-operand forwarding multiplexers that select between unforwarded ID/EX register values, older results forwarded from the EX/MEM boundary, and write-back data forwarded from the MEM/WB boundary.
+4. **Data Hazard Resolution (Datapath Multiplexers)**: Providing 2-bit dual-operand forwarding multiplexers that select between unforwarded ID/EX register values, older results forwarded from the EX/MEM boundary, and write-back data forwarded from the MEM/WB boundary (proposed M5 forwarding scheme).
 5. **Store Data Preservation**: Ensuring that for store instructions (`SW`), the ALU computes the memory address using the immediate while the store payload data (`rs2`) is independently forwarded and passed through to the memory stage.
 6. **Side-Effect Gating & Pipeline Registration**: Suppressing control side-effects (`mem_read`, `mem_write`, `reg_write`, `branch_taken`) on pipeline bubbles (`valid = 0`) and registering active results into the `ex_mem_reg` boundary register.
 
@@ -24,68 +24,61 @@ In a classic 5-stage RISC-V pipelined processor (**IF** $\rightarrow$ **ID** $\r
 
 ## 2. EX-Stage Datapath Architecture
 
-The following block diagram illustrates the interconnections between the EX stage submodules, forwarding multiplexers, and pipeline registers:
+The following block diagram illustrates the datapath flow within `ex_stage.v`, showing its internal submodules, operand forwarding paths, and proposed integration boundaries with neighboring stages (ID/EX, EX/MEM, M4 data memory, and M5 hazard/forwarding logic):
 
 ```text
-               ================== EX STAGE DATAPATH ==================
+       ========================= EX STAGE DATAPATH =========================
+       [Proposed Integration Interfaces with ID/EX, EX/MEM, M4, and M5]
 
-           ID/EX Pipeline Register
-         ┌─────────────────────────┐
-         │ pc_in, pc_plus4_in      │──────────────────────────────────────────┐
-         │ imm_in                  │─────────────┬─────────────┐              │
-         │ funct3_in, funct7_in    │──┐          │             │              │
-         │ alu_op_in               │──┼─┐        │             │              │
-         │ branch_type_in          │──┼─┼─┐      │             │              │
-         │ alu_src_imm_in          │──┼─┼─┼─┐    │             │              │
-         │ rs1_in, rs2_in, rd_in   │──┼─┼─┼─┼─┐  │             │              │
-         │ rs1_data_in             │─┐│ │ │ │ │  │             │              │
-         │ rs2_data_in             │┐││ │ │ │ │  │             │              │
-         │ valid_in                ││││ │ │ │ │  │             │              │
-         └─────────────────────────┘│││ │ │ │ │  │             │              │
-                                    │││ │ │ │ │  │             │              │
-   Forwarding from M5               │││ │ │ │ │  │             │              │
-   forward_a [1:0] ───┐             │││ │ │ │ │  │             │              │
-   forward_mem_data ──┼──┐          │││ │ │ │ │  │             │              │
-   forward_wb_data  ──┼──┼──┐       │││ │ │ │ │  │             │              │
-                      ▼  ▼  ▼       │││ │ │ │ │  │             │              │
-                  ┌────────────┐    │││ │ │ │ │  │             │              │
-                  │ FWD MUX A  │◄───┘││ │ │ │ │  │             │              │
-                  └─────┬──────┘     ││ │ │ │ │  │             │              │
-                        │            ││ │ │ │ │  │             │              │
-         fwd_rs1_data   ├────────────┼┼─┼─┼─┼─┼──┼────────┐    │              │
-                        ▼            ││ │ │ │ │  │        │    │              │
-                  ┌────────────┐     ││ │ │ │ │  │        ▼    ▼              │
-                  │   ALU OpA  │     ││ │ │ │ │  │     ┌────────────┐         │
-                  └─────┬──────┘     ││ │ │ │ │  │     │   BRANCH   │         │
-                        │            ││ │ │ │ │  │     │    UNIT    │         │
-   forward_b [1:0] ───┐ │            ││ │ │ │ │  │     └─────┬──────┘         │
-   forward_mem_data ──┼─┼──┐         ││ │ │ │ │  │           │                │
-   forward_wb_data  ──┼─┼──┼──┐      ││ │ │ │ │  │           ├─► branch_taken │
-                      ▼ ▼  ▼  ▼      ││ │ │ │ │  │           └─► branch_target│
-                  ┌────────────┐     ││ │ │ │ │  │                            │
-                  │ FWD MUX B  │◄────┘│ │ │ │ │  │                            │
-                  └─────┬──────┘      │ │ │ │ │  │                            │
-                        │             │ │ │ │ │  │                            │
-         fwd_rs2_data   ├─────────────┼─┼─┼─┼─┼──┼───────► store_data        │
-                        │             │ │ │ │ │  │                            │
-                        ▼             │ │ │ │ │  │                            │
-                  ┌────────────┐      │ │ │ │ │  │                            │
-   alu_src_imm ──►│ MUX (B/Imm)│◄─────┼─┼─┼─┘ │  │                            │
-                  └─────┬──────┘      │ │ │   │  │                            │
-                        │             │ │ │   │  │                            │
-         ALU OpB        ▼             │ │ │   │  │                            │
-                  ┌────────────┐      │ │ │   │  │                            │
-                  │            │      │ │ │   │  │                            │
-   alu_control ──►│    ALU     │◄─────┼─┴─┘   │  │                            │
-                  │            │      │       │  │                            │
-                  └─────┬──────┘      │       │  │                            │
-                        │ alu_result  │       │  │                            │
-                        ▼             ▼       ▼  ▼                            │
-         ┌────────────────────────────────────────────────────────┐           │
-         │             EX/MEM Pipeline Register (ex_mem_reg)      │◄──────────┘
-         │  Captures: alu_result, store_data, rd, pc, pc_plus4,   │
-         │            mem_read, mem_write, reg_write, wb_from_mem │
-         └────────────────────────────────────────────────────────┘
+  [Proposed Inputs from ID/EX Register]
+    rs1_data_in ──┐
+    rs2_data_in ──┼────────────────────────────────┐
+    imm_in ───────┼──────────────┬─────────┐       │
+    pc_in ────────┼──────────────┼─────────┼───────┼─────────────────────────┐
+    controls ─────┼──────────────┼─────────┼───────┼──────────────────┐      │
+                  │              │         │       │                  │      │
+  [Proposed M5 Forwarding]       │         │       │                  │      │
+    forward_a ────┼────────┐     │         │       │                  │      │
+    forward_b ────┼────────┼─────┼─────────┼───────┼────────────┐     │      │
+    forward data ─┼──┬─────┼─────┼─────────┼───────┼────────┐   │     │      │
+                  ▼  ▼     ▼     │         │       │        ▼   ▼     ▼      │
+               ┌─────────────┐   │         │       │     ┌─────────────┐     │
+               │  FWD MUX A  │◄──┘         │       │     │  FWD MUX B  │◄────┘
+               └──────┬──────┘             │       │     └──────┬──────┘
+                      │                    │       │            │
+        fwd_rs1_data  ├──────────────┐     │       │            ├────────────┐
+                      │              │     │       │            │            │
+                      ▼              │     │       │            │            ▼
+                 ┌─────────┐         │     │       │            │      ┌────────────┐
+                 │ ALU OpA │         │     │       │            │      │ store_data │
+                 └────┬────┘         │     │       │            │      └─────┬──────┘
+                      │              │     │       │            │            │ (bypasses
+                      │              │     │       │            │            │  ALU mux)
+                      │              │     │       │            ▼            │
+                      │              │     │       │     ┌─────────────┐     │
+                      │              │     │       └────►│ MUX (B/Imm) │◄────┘
+                      │              │     │     alu_src │  (alu_src)  │ (fwd_rs2_data)
+                      │              │     │             └──────┬──────┘
+                      │              │     │                    │
+                      │              │     │                    ▼
+                      │              │     │               ┌─────────┐
+                      │              │     │               │ ALU OpB │
+                      │              │     │               └────┬────┘
+                      │              │     │                    │
+                      │              ▼     ▼                    ▼
+                      │       ┌───────────────┐            ┌───────────┐
+                      │       │  BRANCH_UNIT  │            │    ALU    │◄── alu_ctrl
+                      │       │   (BEQ/BNE)   │            │ (ADD/SUB) │    (from alu_control)
+                      │       └───────┬───────┘            └─────┬─────┘
+                      │               │                          │
+                      │               ├──► branch_taken          │ alu_result
+                      │               └──► branch_target         │ (or memory address)
+                      │                    [Proposed to IF / M5] │
+                      ▼                                          ▼
+  ─────────────────────────────────────────────────────────────────────────────
+  [Proposed Outputs to EX/MEM Pipeline Register (Pending M4 / M5 Integration)]
+    Bundle captures: alu_result, store_data, rd, pc, pc_plus4,
+                     mem_read, mem_write, reg_write, wb_from_mem, valid
 ```
 
 ---
@@ -96,12 +89,12 @@ Milestone 3 consists of four core stage modules, one boundary register, their ac
 
 | Module Name | File Path | Scope / Responsibilities |
 |---|---|---|
-| `alu` | [`rtl/stages/alu.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/rtl/stages/alu.v) | Purely combinational 32-bit ALU. Computes `ADD` and `SUB` results, provides `equal` and `zero` status flags, and defines safe zero-output default behavior for unused opcodes. |
-| `alu_control` | [`rtl/stages/alu_control.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/rtl/stages/alu_control.v) | Combinational control decoder translating ID/EX `alu_op`, `funct3`, and `funct7` into the 4-bit `alu_ctrl` consumed by `alu.v`. Ignores funct fields on immediate/address instructions. |
-| `branch_unit` | [`rtl/stages/branch_unit.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/rtl/stages/branch_unit.v) | Combinational branch evaluator. Tests `BEQ` (equal) and `BNE` (unequal) conditions using forwarded source operands and calculates target as `PC + imm` (byte offset). |
-| `ex_stage` | [`rtl/stages/ex_stage.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/rtl/stages/ex_stage.v) | Structural EX datapath wrapper. Integrates `alu`, `alu_control`, `branch_unit`, dual 2-bit operand forwarding multiplexers, immediate selection, and side-effect control gating. |
-| `ex_mem_reg` | [`rtl/pipeline_registers/ex_mem_reg.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/rtl/pipeline_registers/ex_mem_reg.v) | Synchronous boundary register capturing the 138-bit execution bundle on the rising clock edge with active-high reset, hold, flush, and bubble-clearing support. |
-| *Interface Specs* | [`docs/ex_stage_interface.md`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/docs/ex_stage_interface.md)<br>[`docs/ex_mem_interface.md`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/docs/ex_mem_interface.md) | Architectural interface contracts specifying signal widths, forwarding encodings, edge priorities, and downstream dependencies. |
+| `alu` | [`rtl/stages/alu.v`](../../rtl/stages/alu.v) | Purely combinational 32-bit ALU. Computes `ADD` and `SUB` results, provides `equal` and `zero` status flags, and defines safe zero-output default behavior for unused opcodes. |
+| `alu_control` | [`rtl/stages/alu_control.v`](../../rtl/stages/alu_control.v) | Combinational control decoder translating ID/EX `alu_op`, `funct3`, and `funct7` into the 4-bit `alu_ctrl` consumed by `alu.v`. Ignores funct fields on immediate/address instructions. |
+| `branch_unit` | [`rtl/stages/branch_unit.v`](../../rtl/stages/branch_unit.v) | Combinational branch evaluator. Tests `BEQ` (equal) and `BNE` (unequal) conditions using forwarded source operands and calculates target as `PC + imm` (byte offset). |
+| `ex_stage` | [`rtl/stages/ex_stage.v`](../../rtl/stages/ex_stage.v) | Structural EX datapath wrapper. Integrates `alu`, `alu_control`, `branch_unit`, dual 2-bit operand forwarding multiplexers, immediate selection, and side-effect control gating. |
+| `ex_mem_reg` | [`rtl/pipeline_registers/ex_mem_reg.v`](../../rtl/pipeline_registers/ex_mem_reg.v) | Synchronous boundary register capturing the 138-bit execution bundle on the rising clock edge with active-high reset, hold, flush, and bubble-clearing support. |
+| *Interface Specs* | [`docs/ex_stage_interface.md`](../ex_stage_interface.md)<br>[`docs/ex_mem_interface.md`](../ex_mem_interface.md) | Architectural interface contracts specifying signal widths, forwarding encodings, edge priorities, and proposed downstream dependencies. |
 
 ---
 
@@ -166,7 +159,7 @@ Computed combinationally as:
 $$\text{branch\_target} = \text{pc} + \text{imm} \pmod{2^{32}}$$
 - **Base Address**: Uses the branch instruction's own `pc` (from ID/EX), **not** sequential `pc + 4`.
 - **Byte Offset**: The sign-extended immediate `imm` generated by `instruction_decoder` already incorporates the low bit ($0$) and represents a signed byte offset. **It is not shifted again** (unlike MIPS-style word offsets).
-- **Inactive State**: `branch_target` continuously computes `pc + imm`. Downstream PC multiplexing logic (Issue #25 / M5) qualifies redirection with `branch_taken`, ignoring `branch_target` when `branch_taken == 0`.
+- **Inactive State**: `branch_target` continuously computes `pc + imm`. In the proposed CPU integration (Issue #25 / M5), downstream PC selection logic will qualify redirection with `branch_taken`, ignoring `branch_target` when `branch_taken == 0`.
 
 ---
 
@@ -175,7 +168,7 @@ $$\text{branch\_target} = \text{pc} + \text{imm} \pmod{2^{32}}$$
 ### Forwarding Architecture (Pending M5 Integration)
 The `ex_stage` module implements the **datapath multiplexers** for operand forwarding. The control logic that calculates the forwarding selectors (`forward_a`, `forward_b`) belongs to the M5 Hazard/Forwarding Unit (Issue #24).
 
-The agreed selector encodings implemented in `ex_stage.v` are:
+The forwarding selector encodings currently implemented in `ex_stage.v` (pending M5 confirmation) are:
 
 | Selector Code | Name | Selected Source |
 |---|---|---|
@@ -187,8 +180,8 @@ The agreed selector encodings implemented in `ex_stage.v` are:
 ### Datapath Operand Multiplexing
 - **Operand A (`alu_operand_a`)**: Directly fed by the Forward A multiplexer (`fwd_rs1_data`).
 - **Operand B (`alu_operand_b`)**: Multiplexed between the immediate and forwarded register data based on `alu_src_imm_in`:
-  $$\text{alu\_operand\_b} = \begin{cases} \text{imm\_in}, & \text{if } \text{alu\_src\_imm\_in} = 1 \\ \text{fwd\_rs2\_data}, & \text{if } \text{alu\_src\_imm\_in} = 0 \end{cases}$$
-- **Branch Operands**: `branch_unit` directly connects `op_a = fwd_rs1_data` and `op_b = fwd_rs2_data`, enabling branch decisions to use forwarded results without stalling.
+  $$\text{alu\_operand\_b} = \begin{cases} \text{imm\_in}, & \text{if } \text{alu\_src\_imm_in} = 1 \\ \text{fwd\_rs2\_data}, & \text{if } \text{alu\_src\_imm_in} = 0 \end{cases}$$
+- **Branch Operands**: `branch_unit` directly connects `op_a = fwd_rs1_data` and `op_b = fwd_rs2_data`, enabling branch decisions to evaluate forwarded operands.
 
 ---
 
@@ -203,13 +196,13 @@ A critical architectural feature of `ex_stage.v` is the independent routing of `
   ```verilog
   assign store_data = fwd_rs2_data;
   ```
-  `store_data` is tapped directly from the output of the Forward B multiplexer **before** the ALU Operand B multiplexer. Thus, even while the ALU consumes `imm_in` for address generation, `store_data` reliably preserves the forwarded `rs2` store value and propagates it to `ex_mem_reg`.
+  `store_data` is tapped directly from the output of the Forward B multiplexer **before** the ALU Operand B multiplexer. Thus, even while the ALU consumes `imm_in` for address generation, `store_data` reliably preserves the forwarded `rs2` store value and propagates it to `ex_mem_reg`. (Actual data memory write execution in MEM depends on pending M4 implementation).
 
 ---
 
 ## 9. EX/MEM Pipeline Register (`ex_mem_reg`)
 
-The `ex_mem_reg` module (`rtl/pipeline_registers/ex_mem_reg.v`) latches the execution stage outputs on the rising clock edge for consumption by the Memory (MEM) stage. For complete details, see [`docs/ex_mem_interface.md`](../ex_mem_interface.md).
+The `ex_mem_reg` module (`rtl/pipeline_registers/ex_mem_reg.v`) latches execution stage outputs on the rising clock edge for proposed consumption by the Memory (MEM) stage. For complete details, see [`docs/ex_mem_interface.md`](../ex_mem_interface.md).
 
 ### Captured Bundle Fields (138 bits total)
 1. `alu_result_out [31:0]`: Arithmetic result or memory effective address.
@@ -235,17 +228,22 @@ Evaluated on each rising clock edge:
 
 ## 10. Verification Commands & Actual Test Results
 
-All Milestone 3 modules have been thoroughly verified using dedicated self-checking testbenches with **Icarus Verilog (`iverilog` v13.0)** and `vvp`. All testbenches pass locally with zero errors:
+All Milestone 3 modules have been verified in standalone simulation using dedicated self-checking testbenches with **Icarus Verilog (`iverilog` v13.0)** and `vvp`.
+
+> [!NOTE] Test Suite Scope & Functional Coverage Clarification
+> - The total of **609 checks/cycles** is the arithmetic sum of reported testbench assertions and checked simulation cycles across all 5 test suites. It is **not** a metric of exhaustive functional coverage or formal verification.
+> - For `tb_ex_mem_reg.v`, the **430 checks represent individual checked simulation cycles** that verify active capture, synchronous reset/flush priority, hold stability, walking-bit patterns across the 138-bit payload, and bubble-clearing priority.
+> - Passing these isolated module-level and stage-level testbenches confirms standalone circuit correctness under simulated stimulus; it does **not** establish full CPU integration, multi-stage pipeline interaction, or end-to-end RISC-V program correctness.
 
 ### Verification Test Suite Summary
-| Testbench | Files Compiled | Test Cases | Result |
+| Testbench | Files Compiled | Reported Checks / Cycles | Simulation Result |
 |---|---|---:|---|
-| [`tb_alu.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/testbench/tb_alu.v) | `testbench/tb_alu.v rtl/stages/alu.v` | 80 checks | **PASS** |
-| [`tb_alu_control.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/testbench/tb_alu_control.v) | `testbench/tb_alu_control.v rtl/stages/alu_control.v` | 45 checks | **PASS** |
-| [`tb_branch_unit.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/testbench/tb_branch_unit.v) | `testbench/tb_branch_unit.v rtl/stages/branch_unit.v` | 36 checks | **PASS** |
-| [`tb_ex_stage.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/testbench/tb_ex_stage.v) | `testbench/tb_ex_stage.v rtl/stages/ex_stage.v rtl/stages/alu.v rtl/stages/alu_control.v rtl/stages/branch_unit.v` | 18 checks | **PASS** |
-| [`tb_ex_mem_reg.v`](file:///Users/Abhi/Downloads/projects/Team-Scaler-MCA-Project/testbench/tb_ex_mem_reg.v) | `testbench/tb_ex_mem_reg.v rtl/pipeline_registers/ex_mem_reg.v` | 430 checks | **PASS** |
-| **Total M3 Tests** | | **609 checks** | **100% PASS** |
+| [`tb_alu.v`](../../testbench/tb_alu.v) | `testbench/tb_alu.v rtl/stages/alu.v` | 80 checks | **PASS** |
+| [`tb_alu_control.v`](../../testbench/tb_alu_control.v) | `testbench/tb_alu_control.v rtl/stages/alu_control.v` | 45 checks | **PASS** |
+| [`tb_branch_unit.v`](../../testbench/tb_branch_unit.v) | `testbench/tb_branch_unit.v rtl/stages/branch_unit.v` | 36 checks | **PASS** |
+| [`tb_ex_stage.v`](../../testbench/tb_ex_stage.v) | `testbench/tb_ex_stage.v rtl/stages/ex_stage.v rtl/stages/alu.v rtl/stages/alu_control.v rtl/stages/branch_unit.v` | 18 checks | **PASS** |
+| [`tb_ex_mem_reg.v`](../../testbench/tb_ex_mem_reg.v) | `testbench/tb_ex_mem_reg.v rtl/pipeline_registers/ex_mem_reg.v` | 430 checked cycles | **PASS** |
+| **Sum of M3 Checks/Cycles** | | **609 checks/cycles** | **100% PASS** |
 
 ### Exact Compile and Execution Commands & Actual Terminal Output
 
@@ -314,12 +312,14 @@ While Milestone 3 is internally complete and thoroughly tested at the unit and s
    - The verified testbenches exercise isolated modules and stage wrappers with synthetic test vectors. The full 5-stage pipeline, multi-instruction program execution, and retire-stage commit have **not yet been verified together**.
 2. **Forwarding Multiplexers vs. Forwarding Controller (M5 Dependency)**:
    - The EX stage includes the multiplexers that consume `forward_a` and `forward_b`.
-   - However, the hazard detection logic and forwarding controller that actually compares `ID/EX.rs1` / `ID/EX.rs2` against `EX/MEM.rd` / `MEM/WB.rd` resides in **Milestone 5 (Issue #24)** and is not yet integrated.
-3. **Load-Use Data Hazard Limitation**:
-   - For a Load instruction (`LW`), the `alu_result` captured in `ex_mem_reg` is the memory byte *address*, **not** the loaded *data*.
-   - The actual loaded data is only available at the output of the Data Memory stage (MEM).
-   - Consequently, a dependent instruction immediately following `LW` cannot resolve its hazard by forwarding from `EX/MEM` into the EX stage. M5 hazard logic must insert a 1-cycle pipeline interlock/stall (holding PC and IF/ID while flushing ID/EX).
+   - However, the hazard detection logic and forwarding controller that actually compares `ID/EX.rs1` / `ID/EX.rs2` against `EX/MEM.rd` / `MEM/WB.rd` resides in **Milestone 5 (Issue #24)** and is not yet integrated or confirmed.
+3. **Load-Use Data Hazard Handling (Intended Pipeline Timing)**:
+   - For a Load instruction (`LW`), the `alu_result` computed in EX and captured in `ex_mem_reg` is the memory byte *effective address*, **not** the loaded data word.
+   - The actual data is only retrieved after data memory access occurs in the Memory (MEM) stage (Milestone 4).
+   - Consequently, a dependent instruction immediately following `LW` cannot resolve its data dependency through EX-to-EX forwarding from `EX/MEM`.
+   - In the proposed five-stage pipeline with single-cycle synchronous memory access, the **intended approach is a one-cycle hardware interlock (stall)** inserted by the hazard unit (holding PC and IF/ID while converting ID/EX into a bubble), pending M4/M5 integration and verification.
+   - Note that this one-cycle stall is specific to the planned single-cycle memory design; alternate memory timing arrangements (e.g., multi-cycle memory, bus wait-states, or cache misses) would require their own corresponding stall durations.
 4. **Memory Re-Execution Prevention on Hold**:
    - When `ex_mem_reg` is stalled (`en = 0`), it holds `mem_read` or `mem_write` high. The downstream memory stage (M4, Issue #18) and stall unit (M5, Issue #25) must ensure that a held memory operation is not re-executed repeatedly across stall cycles.
 5. **Pending Agreements**:
-   - Interface contracts with Milestone 4 (Data Memory, MEM stage) and Milestone 5 (Forwarding, Hazard, Flush) remain marked as **pending final team confirmation** until integrated into the top-level processor.
+   - Interface contracts with Milestone 4 (Data Memory, MEM stage) and Milestone 5 (Forwarding, Hazard, Flush) remain marked as **proposed integration interfaces pending final team confirmation** until integrated into the top-level processor.
