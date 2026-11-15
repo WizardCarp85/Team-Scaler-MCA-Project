@@ -1,0 +1,82 @@
+% ============================================================================
+% 5-Stage Pipelined RISC-V (RV32I) Datapath TikZ Figure for IEEE Conference
+% Compatible with IEEEtran.cls
+% ============================================================================
+\begin{figure*}[!t]
+\centering
+\begin{tikzpicture}[
+    scale=0.85, every node/.style={transform shape},
+    stagebox/.style={draw=blue!50!black, fill=blue!5, rounded corners=3pt, thick},
+    planbox/.style={draw=orange!60!black, fill=yellow!10, rounded corners=3pt, dashed, thick},
+    pipereg/.style={draw=black, fill=gray!80!black, text=white, font=\bfseries\footnotesize, rounded corners=2pt, minimum width=0.55cm, minimum height=6.5cm},
+    modbox/.style={draw=black, fill=white, rounded corners=2pt, thick, align=center, font=\footnotesize},
+    mux/.style={draw=black, fill=white, trapezium, trapezium angle=60, minimum width=0.5cm, minimum height=0.8cm, rotate=-90, thick},
+    signal/.style={->, >=stealth, thick, color=black!85},
+    forward/.style={->, >=stealth, very thick, color=blue!70!black},
+    redirect/.style={->, >=stealth, dashed, very thick, color=red!70!black},
+    wbpath/.style={->, >=stealth, very thick, color=green!50!black}
+]
+
+    % Stage backgrounds
+    \draw[stagebox] (0, 0) rectangle (2.8, 7) node[below left, font=\bfseries\footnotesize, text=blue!70!black] at (2.8, 7) {IF (M1)};
+    \draw[stagebox] (3.4, 0) rectangle (6.6, 7) node[below left, font=\bfseries\footnotesize, text=blue!70!black] at (6.6, 7) {ID (M2)};
+    \draw[stagebox] (7.2, 0) rectangle (10.5, 7) node[below left, font=\bfseries\footnotesize, text=blue!70!black] at (10.5, 7) {EX (M3)};
+    \draw[planbox]  (11.1, 0) rectangle (13.6, 7) node[below left, font=\bfseries\footnotesize, text=orange!80!black] at (13.6, 7) {MEM (M4 - Pending)};
+    \draw[planbox]  (14.2, 0) rectangle (16.5, 7) node[below left, font=\bfseries\footnotesize, text=orange!80!black] at (16.5, 7) {WB (M5 - Pending)};
+
+    % Pipeline Registers
+    \node[pipereg] (if_id)  at (3.1, 3.5)  {\rotatebox{90}{IF / ID REGISTER}};
+    \node[pipereg] (id_ex)  at (6.9, 3.5)  {\rotatebox{90}{ID / EX REGISTER}};
+    \node[pipereg] (ex_mem) at (10.8, 3.5) {\rotatebox{90}{EX / MEM REGISTER}};
+    \node[pipereg, fill=gray!50, text=black, dashed] (mem_wb) at (13.9, 3.5) {\rotatebox{90}{MEM / WB REG}};
+
+    % IF Stage
+    \node[modbox, minimum width=0.8cm, minimum height=1.0cm] (pc) at (0.9, 3.2) {\textbf{PC}\\\scriptsize pc.v};
+    \node[modbox, minimum width=1.3cm, minimum height=1.3cm] (imem) at (2.1, 3.2) {\textbf{Instr}\\\textbf{Memory}\\\scriptsize instr\_mem.v};
+    \node[modbox, minimum width=0.7cm, minimum height=0.7cm] (pc4) at (1.6, 5.2) {\textbf{+4}};
+
+    \draw[signal] (pc.east) -- (imem.west);
+    \draw[signal] (imem.east) -- (if_id.west |- imem.east) node[above, midway, font=\tiny] {instr};
+    \draw[signal] (pc.north) |- (pc4.west);
+    \draw[signal] (pc4.east) -| (if_id.west |- pc4.east) node[above, midway, font=\tiny] {pc+4};
+
+    % ID Stage
+    \node[modbox, minimum width=1.3cm, minimum height=1.2cm] (dec) at (4.3, 5.0) {\textbf{Decoder}\\\scriptsize decoder.v};
+    \node[modbox, minimum width=1.3cm, minimum height=1.2cm] (ctrl) at (4.3, 3.2) {\textbf{Control}\\\scriptsize main\_ctrl.v};
+    \node[modbox, minimum width=1.5cm, minimum height=2.2cm] (rf) at (5.7, 3.0) {\textbf{Register File}\\(32$\times$32)\\\scriptsize WB Bypass};
+
+    \draw[signal] (if_id.east |- dec.west) -- (dec.west);
+    \draw[signal] (if_id.east |- ctrl.west) -- (ctrl.west);
+    \draw[signal] (dec.east |- rf.150) -- (rf.150) node[above, midway, font=\tiny] {rs1, rs2};
+    \draw[signal] (rf.30) -- (id_ex.west |- rf.30) node[above, midway, font=\tiny] {rs1\_data};
+    \draw[signal] (rf.330) -- (id_ex.west |- rf.330) node[above, midway, font=\tiny] {rs2\_data};
+    \draw[signal] (ctrl.east) -- (id_ex.west |- ctrl.east) node[above, midway, font=\tiny] {ctrl\_sig};
+
+    % EX Stage
+    \node[modbox, minimum width=1.0cm, minimum height=0.8cm] (aluctrl) at (8.0, 5.0) {\textbf{ALU Ctrl}\\\scriptsize alu\_ctrl.v};
+    \node[modbox, minimum width=1.3cm, minimum height=1.6cm] (alu) at (9.2, 3.4) {\textbf{ALU}\\\scriptsize alu.v};
+    \node[modbox, minimum width=1.4cm, minimum height=0.9cm] (bu) at (8.8, 1.4) {\textbf{Branch Unit}\\\scriptsize BEQ / BNE};
+
+    \draw[signal] (id_ex.east |- alu.150) -- (alu.150);
+    \draw[signal] (id_ex.east |- alu.210) -- (alu.210);
+    \draw[signal] (aluctrl.south) -- (alu.north);
+    \draw[signal] (alu.east) -- (ex_mem.west |- alu.east) node[above, midway, font=\tiny] {alu\_res};
+
+    % MEM & WB Stage (Dashed/Pending)
+    \node[modbox, dashed, minimum width=1.5cm, minimum height=1.8cm] (dmem) at (12.3, 3.4) {\textbf{Data Memory}\\\scriptsize LW / SW\\\scriptsize (Pending M4)};
+    \draw[signal] (ex_mem.east |- dmem.west) -- (dmem.west);
+    \draw[signal] (dmem.east) -- (mem_wb.west |- dmem.east);
+
+    % Forwarding Paths
+    \draw[forward] (ex_mem.south) -- ++(0,-0.8) -| (7.7, 2.8) -- (alu.210);
+
+    % Branch Target Redirect
+    \draw[redirect] (bu.west) -| (-0.3, 3.2) -- (pc.west) node[above, midway, font=\tiny, rotate=90] {Branch Taken (Flush IF/ID)};
+
+    % WB feedback to RF
+    \draw[wbpath] (mem_wb.south) -- ++(0,-1.3) -| (rf.south) node[above, midway, font=\scriptsize] {WB Writeback (wb\_data, wb\_rd, wb\_en) [M5]};
+
+\end{tikzpicture}
+\caption{Overall 5-Stage Pipelined RV32I Processor Architecture illustrating implemented stages (IF, ID, EX) with pipeline registers and operand forwarding paths, alongside planned stages (MEM, WB).}
+\label{fig:pipeline_architecture}
+\end{figure*}
