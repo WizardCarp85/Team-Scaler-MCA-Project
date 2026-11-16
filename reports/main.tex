@@ -102,6 +102,8 @@ The proposed processor partitions the datapath into five sequential stages separ
 \end{tabularx}
 \end{table}
 
+
+
 \subsection{Instruction Fetch (IF) Stage}
 The IF stage obtains an instruction from instruction memory using the program counter (PC). For sequential execution, the next instruction address is computed as $\text{PC} + 4$. The repository's IF implementation comprises:
 \begin{itemize}
@@ -138,6 +140,8 @@ While the first three stages and their boundary registers are implemented in the
     \item \textbf{Hazard Control and Integration:} Planned to integrate hazard-detection logic for load-use stalls, forwarding-control generation for the EX-stage multiplexers, branch flush/redirect control, and top-level processor integration.
 \end{itemize}
 
+
+
 \section{Results and Discussion}
 The design uses testbenches to verify individual modules and stage-level connections. The team recorded the observed output from the repository revision used for submission.
 
@@ -164,9 +168,6 @@ As reported in Table~\ref{tab:results}, \texttt{tb\_ex\_stage} performs 18 discr
 
 At the current documented project stage, the IF, ID, and EX components and their associated pipeline registers have been implemented. The figures for \texttt{tb\_ex\_stage} and \texttt{tb\_ex\_mem\_reg} validate stage-level logic but do not represent full-CPU coverage or end-to-end execution. The complete five-stage processor is not yet documented as integrated. The MEM and WB datapaths assigned to M4, complete hazard-control logic and top-level integration assigned to M5, and end-to-end performance evaluation remain outstanding. Consequently, this report does not claim complete execution of all supported instructions through a fully integrated pipeline, nor does it claim a measured CPI or IPC result. 
 
-\section{Individual Contributions}
-The project follows an issue-driven GitHub workflow using feature branches and pull-request reviews. Table~\ref{tab:contributions} details the milestone ownership across the team.
-
 \begin{table*}[!t]
 \caption{Milestone Ownership and Individual Team Contributions}
 \label{tab:contributions}
@@ -187,6 +188,11 @@ Saksham Narotra & \texttt{sakshaaamm} & M1 --- Instruction Fetch & Implemented \
 \bottomrule
 \end{tabularx}
 \end{table*}
+
+\section{Individual Contributions}
+The project follows an issue-driven GitHub workflow using feature branches and pull-request reviews. Table~\ref{tab:contributions} details the milestone ownership across the team.
+
+
 
 \section{Conclusion and Future Work}
 This project documents the staged development of a five-stage pipelined RISC-V processor targeting a selected instruction subset. The current verified implementation status covers IF, ID, and EX components; complete end-to-end execution remains future work. The current implementation has established the first three stages. The IF stage includes the program counter, instruction memory, fetch wrapper, and IF/ID pipeline register. The ID stage includes instruction decoding, register-file access, control-signal generation, and the ID/EX pipeline register. The EX stage includes the ALU, ALU control, branch unit, execution datapath, and EX/MEM pipeline register. 
