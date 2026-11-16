@@ -66,7 +66,13 @@ The repository has progressed through the first three major architectural milest
     - Synchronous interlock control: PC hold (`next_pc <= pc`), IF/ID hold (`en = 0`), and ID/EX bubble insertion (`flush = 1`).
     - Comprehensive unit and cycle-accurate pipeline timing testbenches (`tb_hazard_detection.v`, `tb_hazard_unit.v`).
     - Complete specification contract in [`docs/hazard_detection_interface.md`](docs/hazard_detection_interface.md).
-  - [ ] Forwarding unit (EX-to-EX, MEM-to-EX) (Issue #24).
+  - [x] **EX-Stage Forwarding & Operand Bypass Unit (Issue #24)**
+    - Dual-operand forwarding selection for EX-stage operands (`forward_a`, `forward_b`) resolving RAW hazards from `EX/MEM` and `MEM/WB` stages (`forwarding_unit.v`, `forwarding.v`).
+    - Strict youngest-producer priority (`EX/MEM` over `MEM/WB`).
+    - Safe hazard resolution: `x0` immunity, invalid/bubble suppression, and unforwardable load (`ex_mem_mem_read`) gating.
+    - Full datapath integration with `ex_stage.v` preserving immediate selection and routing forwarded operands to ALU, store data, and branch comparison.
+    - Exhaustive self-checking testbenches (`tb_forwarding_unit.v`, `tb_forwarding.v`).
+    - Complete interface and multiplexer specification contract in [`docs/forwarding_interface.md`](docs/forwarding_interface.md).
   - [ ] Branch misprediction flush unit and full top-level CPU integration (Issue #25).
 - [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Upcoming)**
   - Comprehensive assembly verification programs, CPI/IPC calculation, and performance reports.
@@ -115,6 +121,9 @@ next_pc ─►│  [PC Reg]   │       │  [Decoder]  │       │ [ALU Ctrl]
 | **MEM/WB**| `mem_wb_reg` | `rtl/pipeline_registers/mem_wb_reg.v`| Boundary register capturing load data, ALU result, and write-back controls |
 | **WB**    | `wb_stage`   | `rtl/stages/wb_stage.v`              | Write-Back source multiplexer with side-effect validation |
 | **M5**    | `hazard_detection` | `rtl/stages/hazard_detection.v`| Load-use RAW hazard detection and synchronous stall/bubble controller |
+| **M5**    | `hazard_unit`| `rtl/stages/hazard_unit.v`           | Hazard unit wrapper / alias |
+| **M5**    | `forwarding_unit`  | `rtl/stages/forwarding_unit.v` | EX-stage RAW operand forwarding multiplexer controller |
+| **M5**    | `forwarding`       | `rtl/stages/forwarding.v`      | Forwarding unit wrapper / alias |
 
 ### Key Architectural Conventions
 - **Clock & Reset:** Single rising-edge clock domain (`clk`), synchronous active-high reset (`rst`).
@@ -141,7 +150,8 @@ Team-Scaler-MCA-Project/
 │   ├── mem_wb_interface.md          # MEM/WB pipeline register specification
 │   ├── wb_stage_interface.md        # WB stage logic and register-file interface
 │   ├── load_store_wb_verification.md# Load/Store & Write-Back integration tests
-│   └── hazard_detection_interface.md# Load-use hazard detection & stall control
+│   ├── hazard_detection_interface.md# Load-use hazard detection & stall control
+│   └── forwarding_interface.md      # EX-stage forwarding & operand bypass specification
 ├── programs/
 │   ├── README.md                    # Hex test image documentation
 │   └── if_test.hex                  # Instruction image for fetch testing
@@ -169,7 +179,9 @@ Team-Scaler-MCA-Project/
 │       ├── mem_stage.v              # Memory stage wrapper
 │       ├── wb_stage.v               # Write-Back multiplexer stage
 │       ├── hazard_detection.v       # Load-use hazard detection unit
-│       └── hazard_unit.v            # Hazard unit wrapper / alias
+│       ├── hazard_unit.v            # Hazard unit wrapper / alias
+│       ├── forwarding_unit.v        # EX-stage forwarding unit
+│       └── forwarding.v             # Forwarding unit wrapper / alias
 ├── simulation/                      # Simulation binaries and VCD waveform output
 ├── testbench/
 │   ├── fixtures/                    # Test hex programs and fixtures
@@ -185,6 +197,8 @@ Team-Scaler-MCA-Project/
 │   ├── tb_load_store_wb.v           # Load/Store & Write-Back integration testbench
 │   ├── tb_hazard_detection.v        # Load-use hazard detection testbench
 │   ├── tb_hazard_unit.v             # Hazard unit wrapper testbench
+│   ├── tb_forwarding_unit.v         # EX-stage forwarding unit integration testbench
+│   ├── tb_forwarding.v              # Forwarding wrapper testbench
 │   ├── tb_fetch.v                   # Instruction fetch integration testbench
 │   ├── tb_id_stage.v                # ID stage integration testbench
 │   ├── tb_id_ex_reg.v               # ID/EX pipeline register testbench
@@ -316,6 +330,26 @@ iverilog -g2012 -o simulation/tb_hazard_unit.vvp \
     rtl/stages/hazard_unit.v \
     rtl/stages/hazard_detection.v
 vvp simulation/tb_hazard_unit.vvp
+```
+
+#### 6. Forwarding & Operand Bypass Tests
+```bash
+# EX-stage forwarding unit and datapath integration test
+iverilog -g2012 -o simulation/tb_forwarding_unit.vvp \
+    testbench/tb_forwarding_unit.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v
+vvp simulation/tb_forwarding_unit.vvp
+
+# Forwarding unit alias verification test
+iverilog -g2012 -o simulation/tb_forwarding.vvp \
+    testbench/tb_forwarding.v \
+    rtl/stages/forwarding.v \
+    rtl/stages/forwarding_unit.v
+vvp simulation/tb_forwarding.vvp
 ```
 
 ### Viewing Waveforms
