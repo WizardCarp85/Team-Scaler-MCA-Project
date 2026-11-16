@@ -1,7 +1,7 @@
 // =============================================================================
 // Testbench: tb_branch_controller
 // Project: Team Scaler MCA Project - RV32I Pipelined Processor
-// Issue: #23 - Branch Redirect, Flush & Hazard Stall Coordination Logic
+// Issue: #25 - Branch Redirect, Flush & Hazard Stall Coordination Logic
 //
 // Description:
 //   Comprehensive verification suite for branch_controller and
