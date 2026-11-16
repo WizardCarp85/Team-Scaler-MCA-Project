@@ -8,6 +8,8 @@ A 5-stage pipelined RISC-V (RV32I subset) processor implemented in Verilog, targ
 
 This project implements a classic 5-stage RISC-V pipeline (**IF**, **ID**, **EX**, **MEM**, **WB**) supporting core integer arithmetic, memory access, and branch instructions. The design emphasizes modularity, clean pipeline interfaces, robust hazard handling capabilities (forwarding, stalls, flushes), and verifiable stage-by-stage progression.
 
+> **Project Demo Video:** [Google Drive Folder Link](https://drive.google.com/drive/folders/1EgOdLGRiIbfGNEMWvCw3mpRqaSgrbESI?usp=sharing) (see [`video/README.md`](video/README.md))
+
 ### Supported Instruction Subset
 | Format | Instructions | Description |
 |---|---|---|
@@ -235,6 +237,8 @@ Team-Scaler-MCA-Project/
 │   ├── tb_main_control.v            # Main control unit testbench
 │   ├── tb_pc_instr_mem.v            # PC & instruction memory testbench
 │   └── tb_register_file.v           # Register file testbench
+├── video/
+│   └── README.md                    # Project demonstration video link & guide
 ├── CONTRIBUTING.md                  # Team Git & GitHub collaboration guide
 └── README.md                        # Project documentation & progress summary
 ```
@@ -476,7 +480,17 @@ gtkwave simulation/<dump_name>.vcd
 
 ---
 
-## 6. Collaboration Workflow
+## 6. Project Demonstration Video
+
+A comprehensive video presentation and walkthrough demonstrating the 5-stage pipelined processor architecture, hazard handling, branch resolution, testbench suites, and waveform evidence in GTKWave is available:
+
+- **Google Drive Video Folder:** [Team Scaler MCA Project Demo Video](https://drive.google.com/drive/folders/1EgOdLGRiIbfGNEMWvCw3mpRqaSgrbESI?usp=sharing)
+- **Direct URL:** `https://drive.google.com/drive/folders/1EgOdLGRiIbfGNEMWvCw3mpRqaSgrbESI?usp=sharing`
+- **Documentation & Details:** [`video/README.md`](video/README.md)
+
+---
+
+## 7. Collaboration Workflow
 
 All contributors follow the process outlined in [`CONTRIBUTING.md`](CONTRIBUTING.md):
 1. **Branch per Issue:** Create a branch for every issue from the latest `main` (`feature/issue-<num>-<desc>`, `fix/issue-...`, `docs/issue-...`).
