@@ -1,7 +1,7 @@
 // =============================================================================
 // Module: branch_controller
 // Project: Team Scaler MCA Project - RV32I Pipelined Processor
-// Issue: #23 - Branch Redirect, Flush & Hazard Stall Coordination Logic
+// Issue: #25 - Branch Redirect, Flush & Hazard Stall Coordination Logic
 //
 // Description:
 //   Coordinates branch redirection from the EX stage with pipeline hazard

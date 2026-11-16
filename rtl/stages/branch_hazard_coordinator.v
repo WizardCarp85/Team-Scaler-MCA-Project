@@ -1,7 +1,7 @@
 // =============================================================================
 // Module: branch_hazard_coordinator
 // Project: Team Scaler MCA Project - RV32I Pipelined Processor
-// Issue: #23 - Branch Redirect, Flush & Hazard Stall Coordination Logic
+// Issue: #25 - Branch Redirect, Flush & Hazard Stall Coordination Logic
 //
 // Description:
 //   Direct alias / wrapper for branch_controller.v providing identical ports

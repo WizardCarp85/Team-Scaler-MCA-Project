@@ -66,7 +66,7 @@ The repository has progressed through the first three major architectural milest
     - Synchronous interlock control: PC hold (`next_pc <= pc`), IF/ID hold (`en = 0`), and ID/EX bubble insertion (`flush = 1`).
     - Comprehensive unit and cycle-accurate pipeline timing testbenches (`tb_hazard_detection.v`, `tb_hazard_unit.v`).
     - Complete specification contract in [`docs/hazard_detection_interface.md`](docs/hazard_detection_interface.md).
-  - [x] **Branch Redirect, Pipeline Flush & Hazard Stall Coordination (Issue #23)**
+  - [x] **Branch Misprediction Flush & Hazard Coordination Unit (Issue #25)**
     - Centralized branch redirection and pipeline flush controller (`branch_controller.v`, `branch_hazard_coordinator.v`).
     - Next-PC redirection to branch target on taken branches (`BEQ`, `BNE` resolved in EX).
     - Dual-boundary synchronous flushing (`if_id_flush = 1`, `id_ex_flush = 1`) squashing wrong-path instructions in IF and ID before architectural side effects.
@@ -81,7 +81,7 @@ The repository has progressed through the first three major architectural milest
     - Full datapath integration with `ex_stage.v` preserving immediate selection and routing forwarded operands to ALU, store data, and branch comparison.
     - Exhaustive self-checking testbenches (`tb_forwarding_unit.v`, `tb_forwarding.v`).
     - Complete interface and multiplexer specification contract in [`docs/forwarding_interface.md`](docs/forwarding_interface.md).
-  - [ ] Full top-level CPU integration and pipeline verification (Issue #25).
+  - [ ] Full top-level CPU datapath and pipeline integration.
 - [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Upcoming)**
   - Comprehensive assembly verification programs, CPI/IPC calculation, and performance reports.
 

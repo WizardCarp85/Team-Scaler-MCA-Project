@@ -2,7 +2,7 @@
 
 **Module:** `branch_controller` (`rtl/stages/branch_controller.v`) / `branch_hazard_coordinator` (`rtl/stages/branch_hazard_coordinator.v`)  
 **Milestone:** Milestone 5 (M5) — Hazard Detection, Forwarding & Full Pipeline Integration  
-**Related Issue:** Issue #23 (Branch Redirect, Pipeline Flush & Hazard Stall Coordination)
+**Related Issue:** Issue #25 (Branch Redirect, Pipeline Flush & Hazard Stall Coordination)
 
 ---
 
