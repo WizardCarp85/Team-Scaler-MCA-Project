@@ -60,9 +60,14 @@ The repository has progressed through the first three major architectural milest
   - Write-Back stage logic with source multiplexing and side-effect gating (`wb_stage.v`).
   - Exhaustive unit and end-to-end integration testbenches (`tb_data_mem.v`, `tb_mem_stage.v`, `tb_mem_wb_reg.v`, `tb_wb_stage.v`, `tb_load_store_wb.v`).
   - Interface contracts in [`docs/data_mem_interface.md`](docs/data_mem_interface.md), [`docs/mem_wb_interface.md`](docs/mem_wb_interface.md), [`docs/wb_stage_interface.md`](docs/wb_stage_interface.md), and [`docs/load_store_wb_verification.md`](docs/load_store_wb_verification.md).
-- [ ] **Milestone 5: Hazard Detection, Forwarding & Full Pipeline Integration (Upcoming)**
-  - Forwarding unit (EX-to-EX, MEM-to-EX) and load-use hazard stall unit.
-  - Branch misprediction flush unit and full top-level CPU integration.
+- [ ] **Milestone 5: Hazard Detection, Forwarding & Full Pipeline Integration (In Progress)**
+  - [x] **Load-Use Hazard Detection & Pipeline Stall Control (Issue #22)**
+    - Read-After-Write (RAW) hazard detection unit comparing ID source registers with EX load destination (`hazard_detection.v`, `hazard_unit.v`).
+    - Synchronous interlock control: PC hold (`next_pc <= pc`), IF/ID hold (`en = 0`), and ID/EX bubble insertion (`flush = 1`).
+    - Comprehensive unit and cycle-accurate pipeline timing testbenches (`tb_hazard_detection.v`, `tb_hazard_unit.v`).
+    - Complete specification contract in [`docs/hazard_detection_interface.md`](docs/hazard_detection_interface.md).
+  - [ ] Forwarding unit (EX-to-EX, MEM-to-EX) (Issue #24).
+  - [ ] Branch misprediction flush unit and full top-level CPU integration (Issue #25).
 - [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Upcoming)**
   - Comprehensive assembly verification programs, CPI/IPC calculation, and performance reports.
 
@@ -105,6 +110,11 @@ next_pc ─►│  [PC Reg]   │       │  [Decoder]  │       │ [ALU Ctrl]
 | **EX** | `branch_unit` | `rtl/stages/branch_unit.v` | Computes target address (`pc + imm`) and tests BEQ/BNE conditions |
 | **EX** | `ex_stage` | `rtl/stages/ex_stage.v` | Integrated EX datapath with forwarding multiplexers and control gating |
 | **EX/MEM**| `ex_mem_reg` | `rtl/pipeline_registers/ex_mem_reg.v`| Captures `alu_result`, `store_data`, destination register `rd`, and memory flags |
+| **MEM**   | `data_mem`   | `rtl/stages/data_mem.v`              | 1 KiB word-addressable data memory with synchronous write and combinational read |
+| **MEM**   | `mem_stage`  | `rtl/stages/mem_stage.v`             | Memory stage wrapper integrating data memory and address decoding |
+| **MEM/WB**| `mem_wb_reg` | `rtl/pipeline_registers/mem_wb_reg.v`| Boundary register capturing load data, ALU result, and write-back controls |
+| **WB**    | `wb_stage`   | `rtl/stages/wb_stage.v`              | Write-Back source multiplexer with side-effect validation |
+| **M5**    | `hazard_detection` | `rtl/stages/hazard_detection.v`| Load-use RAW hazard detection and synchronous stall/bubble controller |
 
 ### Key Architectural Conventions
 - **Clock & Reset:** Single rising-edge clock domain (`clk`), synchronous active-high reset (`rst`).
@@ -126,7 +136,12 @@ Team-Scaler-MCA-Project/
 │   ├── id_stage_interface.md        # ID stage interface contract
 │   ├── id_ex_interface.md           # ID/EX pipeline register specification
 │   ├── ex_stage_interface.md        # EX stage datapath & forwarding specification
-│   └── ex_mem_interface.md          # EX/MEM pipeline register specification
+│   ├── ex_mem_interface.md          # EX/MEM pipeline register specification
+│   ├── data_mem_interface.md        # Data memory interface specification
+│   ├── mem_wb_interface.md          # MEM/WB pipeline register specification
+│   ├── wb_stage_interface.md        # WB stage logic and register-file interface
+│   ├── load_store_wb_verification.md# Load/Store & Write-Back integration tests
+│   └── hazard_detection_interface.md# Load-use hazard detection & stall control
 ├── programs/
 │   ├── README.md                    # Hex test image documentation
 │   └── if_test.hex                  # Instruction image for fetch testing
@@ -136,7 +151,8 @@ Team-Scaler-MCA-Project/
 │   ├── pipeline_registers/
 │   │   ├── if_id_reg.v              # IF/ID boundary register
 │   │   ├── id_ex_reg.v              # ID/EX boundary register
-│   │   └── ex_mem_reg.v             # EX/MEM boundary register
+│   │   ├── ex_mem_reg.v             # EX/MEM boundary register
+│   │   └── mem_wb_reg.v             # MEM/WB boundary register
 │   └── stages/
 │       ├── pc.v                     # Program counter
 │       ├── instr_mem.v              # Instruction memory
@@ -148,7 +164,12 @@ Team-Scaler-MCA-Project/
 │       ├── alu.v                    # Arithmetic Logic Unit
 │       ├── alu_control.v            # ALU control decoder
 │       ├── branch_unit.v            # Branch condition and target unit
-│       └── ex_stage.v               # EX stage top wrapper
+│       ├── ex_stage.v               # EX stage top wrapper
+│       ├── data_mem.v               # Data memory storage
+│       ├── mem_stage.v              # Memory stage wrapper
+│       ├── wb_stage.v               # Write-Back multiplexer stage
+│       ├── hazard_detection.v       # Load-use hazard detection unit
+│       └── hazard_unit.v            # Hazard unit wrapper / alias
 ├── simulation/                      # Simulation binaries and VCD waveform output
 ├── testbench/
 │   ├── fixtures/                    # Test hex programs and fixtures
@@ -157,6 +178,13 @@ Team-Scaler-MCA-Project/
 │   ├── tb_branch_unit.v             # Branch unit testbench
 │   ├── tb_ex_stage.v                # EX stage datapath & forwarding testbench
 │   ├── tb_ex_mem_reg.v              # EX/MEM pipeline register testbench
+│   ├── tb_data_mem.v                # Data memory testbench
+│   ├── tb_mem_stage.v               # Memory stage testbench
+│   ├── tb_mem_wb_reg.v              # MEM/WB pipeline register testbench
+│   ├── tb_wb_stage.v                # Write-back stage testbench
+│   ├── tb_load_store_wb.v           # Load/Store & Write-Back integration testbench
+│   ├── tb_hazard_detection.v        # Load-use hazard detection testbench
+│   ├── tb_hazard_unit.v             # Hazard unit wrapper testbench
 │   ├── tb_fetch.v                   # Instruction fetch integration testbench
 │   ├── tb_id_stage.v                # ID stage integration testbench
 │   ├── tb_id_ex_reg.v               # ID/EX pipeline register testbench
@@ -270,6 +298,24 @@ iverilog -g2012 -o simulation/tb_load_store_wb.vvp testbench/tb_load_store_wb.v 
     rtl/pipeline_registers/mem_wb_reg.v rtl/stages/wb_stage.v \
     rtl/stages/register_file.v
 vvp simulation/tb_load_store_wb.vvp
+```
+
+#### 5. Hazard Detection & Stall Control Tests
+```bash
+# Load-use hazard detection unit and pipeline timing test
+iverilog -g2012 -o simulation/tb_hazard_detection.vvp \
+    testbench/tb_hazard_detection.v \
+    rtl/stages/hazard_detection.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/pipeline_registers/id_ex_reg.v
+vvp simulation/tb_hazard_detection.vvp
+
+# Hazard unit alias verification test
+iverilog -g2012 -o simulation/tb_hazard_unit.vvp \
+    testbench/tb_hazard_unit.v \
+    rtl/stages/hazard_unit.v \
+    rtl/stages/hazard_detection.v
+vvp simulation/tb_hazard_unit.vvp
 ```
 
 ### Viewing Waveforms
