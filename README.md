@@ -53,10 +53,14 @@ The repository has progressed through the first three major architectural milest
   - EX/MEM pipeline register capturing execution results, store data, and gated control flags (`ex_mem_reg.v`).
   - Exhaustive testbenches (`tb_alu.v`, `tb_alu_control.v`, `tb_branch_unit.v`, `tb_ex_stage.v`, `tb_ex_mem_reg.v`).
   - Interface contracts in [`docs/ex_stage_interface.md`](docs/ex_stage_interface.md) and [`docs/ex_mem_interface.md`](docs/ex_mem_interface.md).
-- [ ] **Milestone 4: Memory (MEM) Stage & MEM/WB Register (Upcoming)**
-  - Data memory module with synchronous write and combinational/synchronous read.
-  - MEM stage datapath and MEM/WB pipeline register.
-- [ ] **Milestone 5: Write-Back (WB), Hazard Detection & Full Pipeline Integration (Upcoming)**
+- [x] **Milestone 4: Memory (MEM) Stage & Write-Back (WB) Integration (Issues #17–#21, PRs #54–#58)**
+  - Word-addressable data memory module with synchronous write and combinational read (`data_mem.v`).
+  - Structural Memory stage wrapper (`mem_stage.v`).
+  - MEM/WB pipeline register with synchronous hold, flush, and bubble squash priority (`mem_wb_reg.v`).
+  - Write-Back stage logic with source multiplexing and side-effect gating (`wb_stage.v`).
+  - Exhaustive unit and end-to-end integration testbenches (`tb_data_mem.v`, `tb_mem_stage.v`, `tb_mem_wb_reg.v`, `tb_wb_stage.v`, `tb_load_store_wb.v`).
+  - Interface contracts in [`docs/data_mem_interface.md`](docs/data_mem_interface.md), [`docs/mem_wb_interface.md`](docs/mem_wb_interface.md), [`docs/wb_stage_interface.md`](docs/wb_stage_interface.md), and [`docs/load_store_wb_verification.md`](docs/load_store_wb_verification.md).
+- [ ] **Milestone 5: Hazard Detection, Forwarding & Full Pipeline Integration (Upcoming)**
   - Forwarding unit (EX-to-EX, MEM-to-EX) and load-use hazard stall unit.
   - Branch misprediction flush unit and full top-level CPU integration.
 - [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Upcoming)**
@@ -236,6 +240,36 @@ vvp simulation/tb_ex_stage.vvp
 iverilog -g2012 -o simulation/tb_ex_mem_reg.vvp testbench/tb_ex_mem_reg.v \
     rtl/pipeline_registers/ex_mem_reg.v
 vvp simulation/tb_ex_mem_reg.vvp
+```
+
+#### 4. Memory (MEM) & Write-Back (WB) Tests
+```bash
+# Data memory unit test
+iverilog -g2012 -o simulation/tb_data_mem.vvp testbench/tb_data_mem.v \
+    rtl/stages/data_mem.v
+vvp simulation/tb_data_mem.vvp
+
+# MEM stage integration test
+iverilog -g2012 -o simulation/tb_mem_stage.vvp testbench/tb_mem_stage.v \
+    rtl/stages/mem_stage.v rtl/stages/data_mem.v
+vvp simulation/tb_mem_stage.vvp
+
+# MEM/WB pipeline register test
+iverilog -g2012 -o simulation/tb_mem_wb_reg.vvp testbench/tb_mem_wb_reg.v \
+    rtl/pipeline_registers/mem_wb_reg.v
+vvp simulation/tb_mem_wb_reg.vvp
+
+# WB stage & register file integration test
+iverilog -g2012 -o simulation/tb_wb_stage.vvp testbench/tb_wb_stage.v \
+    rtl/stages/wb_stage.v rtl/stages/register_file.v
+vvp simulation/tb_wb_stage.vvp
+
+# Comprehensive end-to-end Load/Store & Write-Back pipeline test
+iverilog -g2012 -o simulation/tb_load_store_wb.vvp testbench/tb_load_store_wb.v \
+    rtl/stages/mem_stage.v rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v rtl/stages/wb_stage.v \
+    rtl/stages/register_file.v
+vvp simulation/tb_load_store_wb.vvp
 ```
 
 ### Viewing Waveforms
