@@ -23,8 +23,8 @@ This project implements a classic 5-stage RISC-V pipeline (**IF**, **ID**, **EX*
 The repository has progressed through the first three major architectural milestones (Scaffold, IF stage, ID stage, EX stage), fully implemented and validated with comprehensive unit and integration testbenches:
 
 ```
-[ Milestone 1: IF Stage ] ──► [ Milestone 2: ID Stage ] ──► [ Milestone 3: EX Stage ] ──► [ M4: MEM ] ──► [ M5: Integration ]
-        (Completed)                   (Completed)                   (Completed)              (Upcoming)         (Upcoming)
+[ Milestone 1: IF Stage ] ──► [ Milestone 2: ID Stage ] ──► [ Milestone 3: EX Stage ] ──► [ M4: MEM/WB ] ──► [ M5: CPU Integration ]
+        (Completed)                   (Completed)                   (Completed)              (Completed)             (Completed)
 ```
 
 ### Milestone Progress Tracker
@@ -60,7 +60,7 @@ The repository has progressed through the first three major architectural milest
   - Write-Back stage logic with source multiplexing and side-effect gating (`wb_stage.v`).
   - Exhaustive unit and end-to-end integration testbenches (`tb_data_mem.v`, `tb_mem_stage.v`, `tb_mem_wb_reg.v`, `tb_wb_stage.v`, `tb_load_store_wb.v`).
   - Interface contracts in [`docs/data_mem_interface.md`](docs/data_mem_interface.md), [`docs/mem_wb_interface.md`](docs/mem_wb_interface.md), [`docs/wb_stage_interface.md`](docs/wb_stage_interface.md), and [`docs/load_store_wb_verification.md`](docs/load_store_wb_verification.md).
-- [ ] **Milestone 5: Hazard Detection, Forwarding & Full Pipeline Integration (In Progress)**
+- [x] **Milestone 5: Hazard Detection, Forwarding & Full Pipeline Integration (Completed)**
   - [x] **Load-Use Hazard Detection & Pipeline Stall Control (Issue #22)**
     - Read-After-Write (RAW) hazard detection unit comparing ID source registers with EX load destination (`hazard_detection.v`, `hazard_unit.v`).
     - Synchronous interlock control: PC hold (`next_pc <= pc`), IF/ID hold (`en = 0`), and ID/EX bubble insertion (`flush = 1`).
@@ -81,7 +81,12 @@ The repository has progressed through the first three major architectural milest
     - Full datapath integration with `ex_stage.v` preserving immediate selection and routing forwarded operands to ALU, store data, and branch comparison.
     - Exhaustive self-checking testbenches (`tb_forwarding_unit.v`, `tb_forwarding.v`).
     - Complete interface and multiplexer specification contract in [`docs/forwarding_interface.md`](docs/forwarding_interface.md).
-  - [ ] Full top-level CPU datapath and pipeline integration.
+  - [x] **Top-Level Pipelined CPU Integration (Issue #26)**
+    - Unified 5-stage CPU datapath connecting IF, IF/ID, ID, ID/EX, EX, EX/MEM, MEM, MEM/WB, WB, and hazard/forwarding units (`cpu.v`, `top.v`).
+    - Fully resolved data, control, PC redirection, forwarding, stall, and write-back feedback paths with zero undriven nets or width mismatches.
+    - Comprehensive observability with exposed debug ports for stage PCs, instruction words, validity bits, register writes, memory transactions, and hazard metrics.
+    - Self-checking integration test suite (`tb_cpu.v`, `tb_top.v`) executing arithmetic, memory, hazard interlocks, and branch redirection sequences in program order.
+    - Complete architectural specification contract in [`docs/top_level_cpu_interface.md`](docs/top_level_cpu_interface.md).
 - [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Upcoming)**
   - Comprehensive assembly verification programs, CPI/IPC calculation, and performance reports.
 
@@ -134,6 +139,8 @@ next_pc ─►│  [PC Reg]   │       │  [Decoder]  │       │ [ALU Ctrl]
 | **M5**    | `branch_hazard_coordinator` | `rtl/stages/branch_hazard_coordinator.v` | Branch hazard coordinator wrapper / alias |
 | **M5**    | `forwarding_unit`  | `rtl/stages/forwarding_unit.v` | EX-stage RAW operand forwarding multiplexer controller |
 | **M5**    | `forwarding`       | `rtl/stages/forwarding.v`      | Forwarding unit wrapper / alias |
+| **Top**   | `cpu`              | `rtl/cpu.v`                    | Top-level 5-stage pipelined RV32I processor module |
+| **Top**   | `top`              | `rtl/top.v`                    | Top-level wrapper / alias for testbench binding |
 
 ### Key Architectural Conventions
 - **Clock & Reset:** Single rising-edge clock domain (`clk`), synchronous active-high reset (`rst`).
@@ -162,12 +169,15 @@ Team-Scaler-MCA-Project/
 │   ├── load_store_wb_verification.md# Load/Store & Write-Back integration tests
 │   ├── hazard_detection_interface.md# Load-use hazard detection & stall control
 │   ├── branch_hazard_coordination.md# Branch redirect, pipeline flush & hazard stall specification
-│   └── forwarding_interface.md      # EX-stage forwarding & operand bypass specification
+│   ├── forwarding_interface.md      # EX-stage forwarding & operand bypass specification
+│   └── top_level_cpu_interface.md   # Top-level pipelined CPU interface & integration contract
 ├── programs/
 │   ├── README.md                    # Hex test image documentation
 │   └── if_test.hex                  # Instruction image for fetch testing
 ├── reports/                         # Performance reports and simulation analysis (M6)
 ├── rtl/
+│   ├── cpu.v                        # Top-level pipelined CPU module
+│   ├── top.v                        # Top-level wrapper / alias
 │   ├── common/                      # Shared parameters and constants
 │   ├── pipeline_registers/
 │   │   ├── if_id_reg.v              # IF/ID boundary register
@@ -198,6 +208,8 @@ Team-Scaler-MCA-Project/
 ├── simulation/                      # Simulation binaries and VCD waveform output
 ├── testbench/
 │   ├── fixtures/                    # Test hex programs and fixtures
+│   ├── tb_cpu.v                     # Top-level pipelined CPU integration testbench
+│   ├── tb_top.v                     # Top-level wrapper verification testbench
 │   ├── tb_alu.v                     # ALU testbench
 │   ├── tb_alu_control.v             # ALU control testbench
 │   ├── tb_branch_unit.v             # Branch unit testbench
@@ -396,6 +408,64 @@ iverilog -g2012 -o simulation/tb_branch_hazard_coordinator.vvp \
     rtl/stages/branch_hazard_coordinator.v \
     rtl/stages/branch_controller.v
 vvp simulation/tb_branch_hazard_coordinator.vvp
+```
+
+#### 8. Top-Level Pipelined CPU Integration Tests
+```bash
+# Top-level pipelined CPU integration testbench
+iverilog -g2012 -o simulation/tb_cpu.vvp \
+    testbench/tb_cpu.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_cpu.vvp
+
+# Top-level wrapper alias verification test
+iverilog -g2012 -o simulation/tb_top.vvp \
+    testbench/tb_top.v \
+    rtl/top.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_top.vvp
 ```
 
 ### Viewing Waveforms
