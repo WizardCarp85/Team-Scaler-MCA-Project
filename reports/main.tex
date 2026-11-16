@@ -7,7 +7,7 @@
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{booktabs}
-\usepackage{tabularx} % Added to fix table overflows
+\usepackage{tabularx}
 \usepackage{url}
 \usepackage{hyperref}
 
@@ -43,7 +43,9 @@
 \maketitle
 
 \begin{abstract}
-This project focuses on the design and modular development of a five-stage pipelined processor based on a subset of the RISC-V instruction set architecture (ISA), using Verilog hardware description language (HDL). The processor is organized into five sequential stages: Instruction Fetch (IF), Instruction Decode (ID), Execute (EX), Memory Access (MEM), and Write-Back (WB). This architectural division allows multiple instructions to occupy different stages during the same clock cycle, improving overall instruction throughput. The supported instruction subset includes register-register arithmetic operations (\texttt{ADD}, \texttt{SUB}), immediate arithmetic (\texttt{ADDI}), memory access operations (\texttt{LW}, \texttt{SW}), and conditional branches (\texttt{BEQ}, \texttt{BNE}). The system is constructed using discrete Verilog modules for datapath functional units and inter-stage pipeline registers. Icarus Verilog is utilized to compile and simulate the register-transfer level (RTL) descriptions, while GTKWave is used for waveform analysis. Currently, the Instruction Fetch, Instruction Decode, and Execute milestones have been implemented and verified through unit-level and stage-level testbenches. The Memory Access stage, Write-Back stage, complete hazard-control unit, and full top-level processor integration are structured as subsequent architectural extensions.
+This project focuses on the design and modular development of a five-stage pipelined processor based on a subset of the RISC-V instruction set architecture (ISA), using Verilog hardware description language (HDL). The processor is organized into the Instruction Fetch (IF), Instruction Decode (ID), Execute (EX), Memory Access (MEM), and Write-Back (WB) stages. The architectural goal is to demonstrate how instruction processing can be divided into sequential stages so that different instructions may occupy different stages during the same clock cycle. Improved throughput is an architectural objective, not a measured result in the current project. The target instruction subset comprises \texttt{ADD}, \texttt{SUB}, \texttt{ADDI}, \texttt{LW}, \texttt{SW}, \texttt{BEQ}, and \texttt{BNE}. Relevant IF, ID, and EX components have been tested independently; complete end-to-end execution remains future work.
+
+The design is developed using a modular approach, with separate Verilog modules for individual datapath components and pipeline registers. Simulation and functional verification are performed using Icarus Verilog, with GTKWave supporting optional Value Change Dump (VCD) waveform inspection. According to the current repository status, the Instruction Fetch, Instruction Decode, and Execute milestones have been implemented with unit and stage-level integration testbenches. The MEM and WB work assigned to M4, hazard-control completion and full top-level integration assigned to M5, and end-to-end performance evaluation remain subsequent development work. This report describes the architectural approach, implementation completed to date, verification strategy, current limitations, and planned extensions.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -51,46 +53,38 @@ RISC-V, pipelined processor, Verilog HDL, Instruction Fetch, Instruction Decode,
 \end{IEEEkeywords}
 
 \section{Introduction}
-A processor executes machine instructions by performing arithmetic calculations, logical comparisons, memory reads, and memory writes. In a simple non-pipelined datapath, a single instruction occupies the processor's resources across multiple operational steps before the subsequent instruction can begin execution. Pipelining addresses this bottleneck by dividing the instruction datapath into discrete stages separated by clocked pipeline registers. Once the pipeline is filled, multiple instructions can be processed concurrently across different stages during each clock cycle, improving overall instruction throughput.
+A processor executes machine instructions by performing arithmetic calculations, logical comparisons, memory reads, and memory writes. In a simple non-pipelined datapath, an instruction may use the processor's resources for several operations before the next instruction begins its execution. Pipelining divides instruction processing into stages. Once the pipeline is filled, multiple instructions can be processed concurrently, with each instruction occupying a different stage in a given clock cycle. Pipelining can improve instruction throughput, although the actual performance depends on stage delays, hazards, stalls, and other implementation details.
 
-RISC-V is an open instruction set architecture built around reduced instruction set computing (RISC) principles. Its regular instruction encoding and modular structure make it suitable for education, research, hardware implementation, and architectural verification. Rather than implementing the complete RV32I specification, this project focuses on a selected subset of 32-bit integer instructions (\texttt{ADD}, \texttt{SUB}, \texttt{ADDI}, \texttt{LW}, \texttt{SW}, \texttt{BEQ}, and \texttt{BNE}) to emphasize fundamental datapath construction, control-signal generation, pipeline synchronization, and modular RTL verification.
-
-The main objectives of this work are:
-\begin{enumerate}
-    \item To study the RISC-V ISA and select a manageable subset of integer instructions.
-    \item To design a processor datapath divided into five pipeline stages: IF, ID, EX, MEM, and WB.
-    \item To implement individual datapath modules and inter-stage pipeline registers using Verilog HDL.
-    \item To develop unit-level and stage-level self-checking testbenches using Icarus Verilog and inspect waveforms using GTKWave.
-    \item To establish an architectural framework for hazard handling and complete processor integration.
-\end{enumerate}
+RISC-V is an open instruction set architecture designed around a reduced instruction set computing (RISC) approach. Its base instruction formats and modular design make it suitable for education, research, and hardware implementation. This project uses a limited subset of the RISC-V integer instruction set to focus on the fundamental operation of a processor rather than implementing the complete ISA.
 
 \section{Literature Review}
 
 \subsection{Reduced Instruction Set Computing (RISC)}
-Reduced Instruction Set Computing relies on simplified, regular instruction formats and a load/store memory model to streamline hardware decoding and facilitate pipelined execution. Patterson and Ditzel established the foundational rationale for RISC architectures, highlighting how reduced instruction complexity directly decreases control logic overhead and improves execution regularity~\cite{b1}. By restricting the project scope to core R-type, I-type, S-type, and B-type operations, the datapath remains clean and deterministic.
+Reduced Instruction Set Computing relies on simplified, regular instruction formats and a load/store memory model to streamline hardware decoding and facilitate pipelined execution. Patterson and Ditzel established the foundational rationale for RISC architectures, highlighting how reduced instruction complexity directly decreases control logic overhead and improves execution regularity~\cite{b1}. 
 
 \subsection{RISC-V Instruction Set Architecture}
-The official RISC-V unprivileged architecture specification defines fixed-width 32-bit instruction encodings, register conventions, immediate generation rules, and base integer semantics~\cite{b2}. These specifications provide the reference for the project's instruction decoder, immediate sign-extension logic, and main control unit. The architecture provides 32 general-purpose 32-bit registers, with register \texttt{x0} permanently hardwired to zero.
+The official RISC-V unprivileged architecture specification defines standard 32-bit base integer instruction encodings (RV32I), register conventions, immediate generation rules, and base integer semantics~\cite{b2}. While the broader RISC-V architecture supports variable-length instruction encodings (such as 16-bit compressed instructions), the base RV32I instructions implemented in this project are strictly 32-bit in width. These specifications provide the reference for the project's instruction decoder, immediate sign-extension logic, and main control unit. The architecture provides 32 general-purpose 32-bit registers, with register \texttt{x0} permanently hardwired to zero.
 
 \subsection{Five-Stage Pipelined Organization and Hazard Mitigation}
-Standard computer organization models divide instruction processing into five stages: Instruction Fetch (IF), Instruction Decode (ID), Execute (EX), Memory Access (MEM), and Write-Back (WB)~\cite{b3}. Pipeline registers preserve intermediate data and control signals across clock boundaries. However, pipelined execution introduces three primary classes of hazards:
-\begin{itemize}
-    \item \textbf{Data Hazards:} Occur when an instruction depends on the result of a preceding instruction that has not yet completed write-back.
-    \item \textbf{Control Hazards:} Arise when the next instruction address depends on the outcome of a conditional branch decision.
-    \item \textbf{Structural Hazards:} Occur when multiple pipeline stages require the same hardware resource during the same clock cycle.
-\end{itemize}
-Mitigating these hazards requires data forwarding paths to route execution results directly to earlier stages, pipeline stalls to pause dependent instructions during load-use delays, and pipeline flushes to invalidate instructions fetched along untaken or redirected branch paths.
+Standard computer organization models divide instruction processing into five stages: Instruction Fetch (IF), Instruction Decode (ID), Execute (EX), Memory Access (MEM), and Write-Back (WB)~\cite{b3}. Pipeline registers preserve intermediate data and control signals across clock boundaries. However, pipelined execution introduces three primary classes of hazards: Data Hazards, Control Hazards, and Structural Hazards. Mitigating these requires data forwarding paths, pipeline stalls, and pipeline flushes. These techniques are planned parts of the later hazard-handling and integration work in this project.
 
 \subsection{HDL Simulation and Waveform Analysis}
-Hardware description languages such as Verilog allow digital systems to be modeled at the behavioral and register-transfer levels. Open-source verification workflows rely on Icarus Verilog (\texttt{iverilog} and \texttt{vvp}) to compile and execute self-checking testbenches, paired with GTKWave to inspect Value Change Dump (VCD) timing waveforms~\cite{b4,b5}. Testing individual components before stage-level integration reduces debugging complexity across multi-stage pipelines.
+Hardware description languages such as Verilog allow digital systems to be modeled at the behavioral and register-transfer levels. Open-source verification workflows rely on Icarus Verilog (\texttt{iverilog} and \texttt{vvp}) to compile and execute self-checking testbenches, paired with GTKWave to inspect Value Change Dump (VCD) timing waveforms~\cite{b4,b5}. Simulation results should be recorded from actual test runs and should not be inferred from the existence of a testbench alone.
 
 \section{Proposed Solution}
 
 \subsection{Overall Five-Stage Pipeline Architecture}
-The proposed processor partitions the datapath into five sequential stages separated by four synchronous pipeline registers (\texttt{IF/ID}, \texttt{ID/EX}, \texttt{EX/MEM}, and \texttt{MEM/WB}). Table~\ref{tab:isa} summarizes the supported instruction subset.
+The proposed processor partitions the datapath into five sequential stages separated by four synchronous pipeline registers (\texttt{IF/ID}, \texttt{ID/EX}, \texttt{EX/MEM}, and \texttt{MEM/WB}). Table~\ref{tab:isa} summarizes the target instruction subset.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figures/pipeline_architecture_corrected.pdf}
+\caption{Five-stage pipelined RV32I processor architecture and implementation status, illustrating verified stages (IF, ID, EX) with pipeline registers and operand forwarding paths alongside planned stages (MEM, WB) and hazard-integration logic.}
+\label{fig:architecture}
+\end{figure*}
 
 \begin{table}[htbp]
-\caption{Supported RISC-V Instruction Subset}
+\caption{Target RISC-V Instruction Subset}
 \label{tab:isa}
 \centering
 \begin{tabularx}{\columnwidth}{@{}llX@{}}
@@ -111,7 +105,7 @@ The proposed processor partitions the datapath into five sequential stages separ
 \subsection{Instruction Fetch (IF) Stage}
 The IF stage obtains an instruction from instruction memory using the program counter (PC). For sequential execution, the next instruction address is computed as $\text{PC} + 4$. The repository's IF implementation comprises:
 \begin{itemize}
-    \item \texttt{pc.v}: A 32-bit program counter with synchronous reset and hold/stall support.
+    \item \texttt{pc.v}: A 32-bit program counter with synchronous reset. It has no enable or stall input; a stall is intended to be achieved externally by feeding the current PC value back as \texttt{next\_pc}.
     \item \texttt{instr\_\allowbreak mem.v}: Instruction memory initialized from a hexadecimal program image using \texttt{\$readmemh}.
     \item \texttt{if\_\allowbreak stage.v}: A wrapper module integrating the PC and instruction memory to output the current PC, $\text{PC} + 4$, and fetched instruction.
     \item \texttt{if\_\allowbreak id\_\allowbreak reg.v}: A pipeline register capturing fetch outputs while supporting reset, flush, and hold behavior.
@@ -122,8 +116,8 @@ The ID stage interprets the fetched instruction and prepares register operands, 
 \begin{itemize}
     \item \texttt{instruction\_\allowbreak decoder.v}: Extracts opcode, \texttt{rd}, \texttt{rs1}, \texttt{rs2}, \texttt{funct3}, \texttt{funct7}, and sign-extended immediate values.
     \item \texttt{register\_\allowbreak file.v}: Implements 32 general-purpose 32-bit registers with \texttt{x0} hardwired to zero and write-to-read bypass logic for simultaneous write-back and read of the same register.
-    \item \texttt{main\_\allowbreak control.v}: Generates control signals for arithmetic, memory, branch, and register write-back operations, along with source-operand usage indicators.
-    \item \texttt{id\_\allowbreak stage.v} and \texttt{id\_\allowbreak ex\_\allowbreak reg.v}: Structurally connect the decode components and latch decoded operands, immediates, register indices, and control flags into the \texttt{ID/EX} boundary register.
+    \item \texttt{main\_\allowbreak control.v}: Generates control signals for arithmetic, memory, branch, and register write-back behavior. 
+    \item \texttt{id\_\allowbreak stage.v} and \texttt{id\_\allowbreak ex\_\allowbreak reg.v}: Structurally connect the decode components. The \texttt{uses\_rs1} and \texttt{uses\_rs2} source-operand usage indicators are generated by \texttt{id\_\allowbreak stage.v}, not by the main control unit.
 \end{itemize}
 
 \subsection{Execute (EX) Stage}
@@ -137,41 +131,43 @@ The EX stage executes arithmetic operations and evaluates conditional branches:
 \end{itemize}
 
 \subsection{Memory Access (MEM), Write-Back (WB), and Hazard Control}
-Table~\ref{tab:piperegs} summarizes the pipeline boundary registers. While the first three stages and their boundary registers are implemented in the current repository, the remaining stages represent planned development milestones:
+While the first three stages and their boundary registers are implemented in the current repository, the remaining stages represent planned development milestones:
 \begin{itemize}
     \item \textbf{Memory Access (MEM) Stage:} Planned to perform data-memory reads for \texttt{LW} and writes for \texttt{SW} using the address calculated in the EX stage, followed by the \texttt{MEM/WB} pipeline register.
     \item \textbf{Write-Back (WB) Stage:} Planned to select between the data-memory output and the ALU result to write back into the destination register.
     \item \textbf{Hazard Control and Integration:} Planned to integrate hazard-detection logic for load-use stalls, forwarding-control generation for the EX-stage multiplexers, branch flush/redirect control, and top-level processor integration.
 \end{itemize}
 
+\section{Results and Discussion}
+The design uses testbenches to verify individual modules and stage-level connections. The team recorded the observed output from the repository revision used for submission.
+
 \begin{table}[htbp]
-\caption{Pipeline Boundary Register Status}
-\label{tab:piperegs}
+\caption{Testbench Simulation Results Summary}
+\label{tab:results}
 \centering
-\begin{tabularx}{\columnwidth}{@{}llXl@{}}
+\begin{tabularx}{\columnwidth}{@{}lXl@{}}
 \toprule
-\textbf{Register} & \textbf{Stage Boundary} & \textbf{Latched Information} & \textbf{Status} \\
+\textbf{Test} & \textbf{What it checks} & \textbf{Result} \\
 \midrule
-\texttt{IF/ID}  & Fetch / Decode   & Instruction, PC, $\text{PC}+4$, valid flag & Implemented \\
-\texttt{ID/EX}  & Decode / Execute & Operands, immediate, register indices, controls & Implemented \\
-\texttt{EX/MEM} & Execute / Memory & ALU result, store data, \texttt{rd}, memory controls & Implemented \\
-\texttt{MEM/WB} & Memory / Write-Back & Memory/ALU outputs, write-back controls & Planned \\
+\texttt{tb\_alu} & \texttt{ADD}, \texttt{SUB}, flags, and unused operation codes & 80 checks passed \\
+\addlinespace
+\texttt{tb\_branch\_unit} & \texttt{BEQ}/\texttt{BNE} comparisons and branch-target calculation & 36 checks passed \\
+\addlinespace
+\texttt{tb\_ex\_stage} & EX datapath, operand selection, forwarding inputs, and control gating & 18 checks passed \\
+\addlinespace
+\texttt{tb\_ex\_mem\_reg} & Register capture, hold, flush, reset, and invalid/bubble behavior & 430 checked cycles \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-\subsection{Verification Strategy}
-The project is maintained in a modular GitHub repository (\url{https://github.com/WizardCarp85/Team-Scaler-MCA-Project}) and verified using Icarus Verilog (\texttt{iverilog -g2012}) and GTKWave. Unit-level and stage-level testbenches are organized by milestone:
-\begin{itemize}
-    \item \textbf{IF Testbenches:} \texttt{tb\_\allowbreak pc\_\allowbreak instr\_\allowbreak mem.v}, \texttt{tb\_\allowbreak fetch.v}, \texttt{tb\_\allowbreak if\_\allowbreak stage.v}, and \texttt{tb\_\allowbreak if\_\allowbreak id\_\allowbreak reg.v}.
-    \item \textbf{ID Testbenches:} \texttt{tb\_\allowbreak instruction\_\allowbreak decoder.v}, \texttt{tb\_\allowbreak register\_\allowbreak file.v}, \texttt{tb\_\allowbreak main\_\allowbreak control.v}, \texttt{tb\_\allowbreak id\_\allowbreak stage.v}, and \texttt{tb\_\allowbreak id\_\allowbreak ex\_\allowbreak reg.v}.
-    \item \textbf{EX Testbenches:} \texttt{tb\_\allowbreak alu.v}, \texttt{tb\_\allowbreak alu\_\allowbreak control.v}, \texttt{tb\_\allowbreak branch\_\allowbreak unit.v}, \texttt{tb\_\allowbreak ex\_\allowbreak stage.v}, and \texttt{tb\_\allowbreak ex\_\allowbreak mem\_\allowbreak reg.v}.
-\end{itemize}
+As reported in Table~\ref{tab:results}, \texttt{tb\_ex\_stage} performs 18 discrete test checks verifying combinational datapath correctness, operand selection, immediate multiplexing, forwarding inputs, and bubble side-effect suppression. In contrast, \texttt{tb\_ex\_mem\_reg} exercises 430 synchronous checked simulation cycles to comprehensively evaluate register capture, hold behavior, synchronous reset, pipeline flush, bubble handling, and a full 138-bit walking-bit pattern across the EX/MEM pipeline interface boundary.
+
+At the current documented project stage, the IF, ID, and EX components and their associated pipeline registers have been implemented. The figures for \texttt{tb\_ex\_stage} and \texttt{tb\_ex\_mem\_reg} validate stage-level logic but do not represent full-CPU coverage or end-to-end execution. The complete five-stage processor is not yet documented as integrated. The MEM and WB datapaths assigned to M4, complete hazard-control logic and top-level integration assigned to M5, and end-to-end performance evaluation remain outstanding. Consequently, this report does not claim complete execution of all supported instructions through a fully integrated pipeline, nor does it claim a measured CPI or IPC result. 
 
 \section{Individual Contributions}
 The project follows an issue-driven GitHub workflow using feature branches and pull-request reviews. Table~\ref{tab:contributions} details the milestone ownership across the team.
 
-\begin{table*}[htbp]
+\begin{table*}[!t]
 \caption{Milestone Ownership and Individual Team Contributions}
 \label{tab:contributions}
 \centering
@@ -193,7 +189,9 @@ Saksham Narotra & \texttt{sakshaaamm} & M1 --- Instruction Fetch & Implemented \
 \end{table*}
 
 \section{Conclusion and Future Work}
-This work presents the modular design and staged implementation of a five-stage pipelined RISC-V processor in Verilog HDL. The Instruction Fetch, Instruction Decode, and Execute stages—along with the \texttt{IF/ID}, \texttt{ID/EX}, and \texttt{EX/MEM} pipeline registers—have been implemented and paired with unit and stage-level testbenches. Future work includes completing the Memory Access and Write-Back stages, implementing the \texttt{MEM/WB} register, finalizing hazard-detection and forwarding control logic, integrating the top-level processor, and measuring end-to-end execution metrics such as CPI and IPC.
+This project documents the staged development of a five-stage pipelined RISC-V processor targeting a selected instruction subset. The current verified implementation status covers IF, ID, and EX components; complete end-to-end execution remains future work. The current implementation has established the first three stages. The IF stage includes the program counter, instruction memory, fetch wrapper, and IF/ID pipeline register. The ID stage includes instruction decoding, register-file access, control-signal generation, and the ID/EX pipeline register. The EX stage includes the ALU, ALU control, branch unit, execution datapath, and EX/MEM pipeline register. 
+
+The project has therefore established a foundation for completing the memory and write-back datapaths and integrating the full pipeline. Icarus Verilog supports the simulation workflow, and GTKWave is available for waveform inspection when generated VCD files are examined. Future work includes completing the Memory Access and Write-Back stages, implementing the \texttt{MEM/WB} register, finalizing hazard-detection and forwarding control logic, integrating the top-level processor, and measuring end-to-end execution metrics such as CPI and IPC.
 
 \begin{thebibliography}{00}
 \bibitem{b1} D. A. Patterson and D. R. Ditzel, ``The Case for the Reduced Instruction Set Computer,'' \emph{ACM SIGARCH Computer Architecture News}, vol. 8, no. 6, pp. 25--33, Oct. 1980.
