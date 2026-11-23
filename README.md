@@ -174,8 +174,10 @@ Team-Scaler-MCA-Project/
 │   ├── forwarding_interface.md      # EX-stage forwarding & operand bypass specification
 │   └── top_level_cpu_interface.md   # Top-level pipelined CPU interface & integration contract
 ├── programs/
-│   ├── README.md                    # Hex test image documentation
-│   └── if_test.hex                  # Instruction image for fetch testing
+│   ├── README.md                    # Hex test image & benchmark suite documentation
+│   ├── if_test.hex                  # Instruction image for fetch testing
+│   ├── benchmark_accumulate.hex     # Benchmark 1: Arithmetic & accumulator loop
+│   └── benchmark_load_store.hex     # Benchmark 2: Memory & array access sequence
 ├── reports/                         # Performance reports and simulation analysis (M6)
 ├── rtl/
 │   ├── cpu.v                        # Top-level pipelined CPU module
@@ -212,6 +214,8 @@ Team-Scaler-MCA-Project/
 │   ├── fixtures/                    # Test hex programs and fixtures
 │   ├── tb_cpu.v                     # Top-level pipelined CPU integration testbench
 │   ├── tb_top.v                     # Top-level wrapper verification testbench
+│   ├── tb_benchmark_accumulate.v    # Benchmark 1 (Accumulate Loop) self-checking testbench
+│   ├── tb_benchmark_load_store.v    # Benchmark 2 (Memory Load/Store) self-checking testbench
 │   ├── tb_alu.v                     # ALU testbench
 │   ├── tb_alu_control.v             # ALU control testbench
 │   ├── tb_branch_unit.v             # Branch unit testbench
@@ -470,6 +474,66 @@ iverilog -g2012 -o simulation/tb_top.vvp \
     rtl/stages/forwarding_unit.v \
     rtl/stages/branch_controller.v
 vvp simulation/tb_top.vvp
+```
+
+#### 9. Reproducible Benchmark Program Suites
+```bash
+# Ensure simulation output directory exists
+mkdir -p simulation
+
+# Benchmark 1: Arithmetic & Accumulator Loop (RAW forwarding & branch loop)
+iverilog -g2012 -o simulation/tb_benchmark_accumulate.vvp \
+    testbench/tb_benchmark_accumulate.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_benchmark_accumulate.vvp
+
+# Benchmark 2: Memory & Array Access Sequence (Load-use interlocks & store-to-load ordering)
+iverilog -g2012 -o simulation/tb_benchmark_load_store.vvp \
+    testbench/tb_benchmark_load_store.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_benchmark_load_store.vvp
 ```
 
 ### Viewing Waveforms
