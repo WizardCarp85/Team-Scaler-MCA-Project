@@ -9,10 +9,10 @@
 
 ## 1. Overview
 
-This document presents reproducible waveform evidence from full-CPU simulations of the integrated 5-stage pipelined processor. All signal names, timing offsets, and cycle boundaries documented below were verified directly from the generated Value Change Dump (`.vcd`) files.
+This document presents reproducible waveform timing evidence from full-CPU simulations of the integrated 5-stage pipelined processor. All signal transitions, timing offsets, and cycle boundaries documented below were verified directly from the generated Value Change Dump (`.vcd`) simulation traces (`simulation/tb_benchmark_load_store.vcd` and `simulation/tb_benchmark_accumulate.vcd`).
 
 > [!NOTE]
-> **GUI Screenshot Status:** GTKWave GUI screenshot image captures are pending execution in a desktop display environment (GTKWave is not installed in the headless terminal container). Step-by-step instructions are provided in [Section 4](#4-how-to-inspect-and-capture-screenshots-in-gtkwave-on-macos) to view and export screenshots on macOS.
+> **VCD Analysis & GUI Inspection Status:** The timing intervals and signal transitions reported in this document are extracted and verified directly from the simulation VCD files. GTKWave GUI inspection is documented as a manual viewing procedure in [Section 4](#4-how-to-inspect-and-capture-screenshots-in-gtkwave-on-macos); GUI screenshots have not been captured because GTKWave is not installed in this headless terminal environment.
 
 ---
 
@@ -25,30 +25,10 @@ This document presents reproducible waveform evidence from full-CPU simulations 
 - **Simulation Command:**
   ```bash
   mkdir -p simulation && \
-  iverilog -g2012 -o simulation/tb_benchmark_load_store.vvp \
-      testbench/tb_benchmark_load_store.v \
-      rtl/cpu.v \
-      rtl/stages/if_stage.v \
-      rtl/stages/pc.v \
-      rtl/stages/instr_mem.v \
-      rtl/pipeline_registers/if_id_reg.v \
-      rtl/stages/id_stage.v \
-      rtl/stages/instruction_decoder.v \
-      rtl/stages/register_file.v \
-      rtl/stages/main_control.v \
-      rtl/pipeline_registers/id_ex_reg.v \
-      rtl/stages/ex_stage.v \
-      rtl/stages/alu.v \
-      rtl/stages/alu_control.v \
-      rtl/stages/branch_unit.v \
-      rtl/pipeline_registers/ex_mem_reg.v \
-      rtl/stages/mem_stage.v \
-      rtl/stages/data_mem.v \
-      rtl/pipeline_registers/mem_wb_reg.v \
-      rtl/stages/wb_stage.v \
-      rtl/stages/hazard_detection.v \
-      rtl/stages/forwarding_unit.v \
-      rtl/stages/branch_controller.v && \
+  iverilog -g2012 -I rtl -I rtl/stages -I rtl/pipeline_registers \
+      -o simulation/tb_benchmark_load_store.vvp \
+      rtl/cpu.v rtl/stages/*.v rtl/pipeline_registers/*.v \
+      testbench/tb_benchmark_load_store.v && \
   vvp simulation/tb_benchmark_load_store.vvp
   ```
 
@@ -74,34 +54,39 @@ All signals below are verified present in `simulation/tb_benchmark_load_store.vc
 
 ### 2.4 Detailed Timing and Cycle-by-Cycle Progression
 ```
-Cycle 11 (105ns - 115ns):
-  - IF: Fetches next instruction at 0x0000002C.
-  - ID: Decodes LW at 0x00000028.
+Reset Sequence:
+  - Reset asserted from 0 ns to 25 ns.
+  - Deasserted at 26 ns (1 ns after the 25 ns clock edge).
+  - Cycle 1 begins at the 35 ns clock edge.
+
+Cycle 11 (135 ns - 145 ns):
+  - IF: Fetches instruction at 0x0000002C (ADD).
+  - ID: Decodes 0x00000028 (LW x5, 0(x2)).
   - EX: Previous store instruction at 0x00000024.
 
-Cycle 12 (115ns - 125ns) — STALL CYCLE ASSERTED:
-  - EX: `debug_ex_pc = 32'h0000_0028` (LW in EX, mem_read=1, rd=5).
-  - ID: `debug_id_pc = 32'h0000_002C` (ADD in ID, uses_rs1=1, rs1=5).
-  - Hazard Detection: Detects `mem_read_ex && (rd_ex == rs1_id)`!
-  - `debug_stall` asserts HIGH (`1'b1`).
-  - Action taken on rising clock edge:
-    1. PC register holds current value (`0x00000030`).
-    2. IF/ID register holds current instruction (`0x0000002C`).
-    3. ID/EX register is synchronously cleared (`valid_out = 0`, bubble injected).
+Cycle 12 (145 ns - 155 ns) — STALL CYCLE ASSERTED:
+  - EX: debug_ex_pc = 32'h0000_0028 (LW in EX, mem_read=1, rd=5).
+  - ID: debug_id_pc = 32'h0000_002C (ADD in ID, uses_rs1=1, rs1=5).
+  - Hazard Detection: Detects mem_read_ex && (rd_ex == rs1_id) (5 == 5).
+  - debug_stall asserts HIGH (1'b1) throughout 145 ns - 155 ns.
+  - Action taken on rising clock edge at 155 ns:
+    1. PC register holds current value (0x00000030).
+    2. IF/ID pipeline register holds current instruction (0x0000002C, ADD).
+    3. ID/EX pipeline register is synchronously cleared (valid_out <= 0, bubble injected into EX).
 
-Cycle 13 (125ns - 135ns) — BUBBLE IN EX, MEMORY ACCESS:
-  - EX: `debug_ex_valid = 0` (Bubble occupying EX stage; control signals zeroed).
-  - ID: `debug_id_pc = 32'h0000_002C` (ADD held in ID stage).
-  - MEM: `debug_mem_pc = 32'h0000_0028` (LW performs data memory read; memory returns `data = 25`).
-  - `debug_stall` deasserts (`1'b0`).
+Cycle 13 (155 ns - 165 ns) — BUBBLE IN EX, MEMORY READ:
+  - EX: debug_ex_valid = 0 (Bubble occupying EX stage; control signals zeroed).
+  - ID: debug_id_pc = 32'h0000_002C (ADD held in ID stage).
+  - MEM: debug_mem_pc = 32'h0000_0028 (LW performs data memory read; returns data = 25).
+  - debug_stall deasserts (1'b0).
 
-Cycle 14 (135ns - 145ns) — FORWARDING FROM MEM/WB TO EX:
-  - EX: `debug_ex_pc = 32'h0000_002C` (ADD enters EX stage).
-  - WB: `debug_wb_pc = 32'h0000_0028` (LW in WB, `debug_wb_rd = 5`, `debug_wb_data = 25`, `debug_wb_reg_write = 1`).
-  - Forwarding Unit: Detects `reg_write_wb && rd_wb == rs1_ex` (`5 == 5`).
-  - `debug_forward_a` asserts `2'b01` (`FWD_MEM_WB`).
-  - ALU Operand A receives forwarded loaded data `25` directly from MEM/WB.
-  - Result: `alu_result = 25 + 10 = 35` computed correctly with exactly 1 stall cycle!
+Cycle 14 (165 ns - 175 ns) — FORWARDING FROM MEM/WB TO EX:
+  - EX: debug_ex_pc = 32'h0000_002C (ADD enters EX stage).
+  - WB: debug_wb_pc = 32'h0000_0028 (LW in WB, debug_wb_rd = 5, debug_wb_data = 25, debug_wb_reg_write = 1).
+  - Forwarding Unit: Detects reg_write_wb && (rd_wb == rs1_ex) (5 == 5).
+  - debug_forward_a asserts 2'b01 (FWD_MEM_WB).
+  - ALU Operand A receives forwarded load data (25) directly from MEM/WB.
+  - Result: alu_result = 25 + 10 = 35 computed correctly with exactly 1 stall cycle.
 ```
 
 ---
@@ -115,38 +100,18 @@ Cycle 14 (135ns - 145ns) — FORWARDING FROM MEM/WB TO EX:
 - **Simulation Command:**
   ```bash
   mkdir -p simulation && \
-  iverilog -g2012 -o simulation/tb_benchmark_accumulate.vvp \
-      testbench/tb_benchmark_accumulate.v \
-      rtl/cpu.v \
-      rtl/stages/if_stage.v \
-      rtl/stages/pc.v \
-      rtl/stages/instr_mem.v \
-      rtl/pipeline_registers/if_id_reg.v \
-      rtl/stages/id_stage.v \
-      rtl/stages/instruction_decoder.v \
-      rtl/stages/register_file.v \
-      rtl/stages/main_control.v \
-      rtl/pipeline_registers/id_ex_reg.v \
-      rtl/stages/ex_stage.v \
-      rtl/stages/alu.v \
-      rtl/stages/alu_control.v \
-      rtl/stages/branch_unit.v \
-      rtl/pipeline_registers/ex_mem_reg.v \
-      rtl/stages/mem_stage.v \
-      rtl/stages/data_mem.v \
-      rtl/pipeline_registers/mem_wb_reg.v \
-      rtl/stages/wb_stage.v \
-      rtl/stages/hazard_detection.v \
-      rtl/stages/forwarding_unit.v \
-      rtl/stages/branch_controller.v && \
+  iverilog -g2012 -I rtl -I rtl/stages -I rtl/pipeline_registers \
+      -o simulation/tb_benchmark_accumulate.vvp \
+      rtl/cpu.v rtl/stages/*.v rtl/pipeline_registers/*.v \
+      testbench/tb_benchmark_accumulate.v && \
   vvp simulation/tb_benchmark_accumulate.vvp
   ```
 
 ### 3.2 Instructions Involved
 - **Branch Instruction:** PC `0x0000001C` — `bne x1, x2, -12` (Loop branch back to `0x00000010` while $i \neq 5$).
 - **Wrong-Path Speculative Fetches:**
-  - PC `0x00000020` — `addi x5, x3, 0` (In ID stage when branch resolves).
-  - PC `0x00000024` — `addi x6, x4, 0` (In IF stage when branch resolves).
+  - PC `0x00000020` — `addi x5, x3, 0` (In ID stage when branch resolves in EX).
+  - PC `0x00000024` — `addi x6, x4, 0` (In IF stage when branch resolves in EX).
 - **Branch Target:** PC `0x00000010` — `addi x1, x1, 1`.
 
 ### 3.3 Verified VCD Signals
@@ -166,37 +131,42 @@ All signals below are verified present in `simulation/tb_benchmark_accumulate.vc
 
 ### 3.4 Detailed Timing and Cycle-by-Cycle Progression
 ```
-Cycle 08 (75ns - 85ns):
+Reset Sequence:
+  - Reset asserted from 0 ns to 25 ns.
+  - Deasserted at 26 ns (1 ns after the 25 ns clock edge).
+  - Cycle 1 begins at the 35 ns clock edge.
+
+Cycle 08 (105 ns - 115 ns):
   - IF: Fetches speculative fall-through instruction at 0x00000020.
   - ID: Decodes BNE instruction at 0x0000001C.
 
-Cycle 09 (85ns - 95ns) — BRANCH RESOLUTION & FLUSH ASSERTION:
-  - EX: `debug_ex_pc = 32'h0000_001C` (BNE evaluates in EX stage).
-    - Source registers: `x1 = 1`, `x2 = 5`.
-    - Comparator: `x1 != x2` evaluates TRUE (`branch_taken = 1`).
-    - Target: `0x0000001C + (-12) = 32'h0000_0010`.
-    - `debug_branch_taken` asserts HIGH (`1'b1`).
-    - `debug_branch_target` evaluates to `32'h0000_0010`.
-    - `debug_flush` asserts HIGH (`1'b1`).
-  - ID: Contains wrong-path instruction `0x00000020`.
-  - IF: Fetches wrong-path instruction `0x00000024`.
-  - Action taken on rising clock edge:
-    1. PC register is redirected to target `32'h0000_0010`.
-    2. IF/ID pipeline register is flushed (`valid_out <= 0`, squashing `0x00000020`).
-    3. ID/EX pipeline register is flushed (`valid_out <= 0`, squashing `0x00000024`).
+Cycle 09 (115 ns - 125 ns) — BRANCH RESOLUTION & FLUSH ASSERTION:
+  - EX: debug_ex_pc = 32'h0000_001C (BNE evaluates in EX stage).
+    - Source registers: x1 = 1, x2 = 5.
+    - Comparator: x1 != x2 evaluates TRUE (branch_taken = 1).
+    - Target: 0x0000001C + (-12) = 32'h0000_0010.
+    - debug_branch_taken asserts HIGH (1'b1).
+    - debug_branch_target evaluates to 32'h0000_0010.
+    - debug_flush asserts HIGH (1'b1) throughout 115 ns - 125 ns.
+  - ID: Contains wrong-path instruction 0x00000020 (addi x5, x3, 0).
+  - IF: Fetches wrong-path instruction 0x00000024 (addi x6, x4, 0).
+  - Action taken on rising clock edge at 125 ns:
+    1. PC register is redirected to target 32'h0000_0010.
+    2. ID/EX pipeline register is flushed (valid_out <= 0), squashing 0x00000020 (which was in ID stage).
+    3. IF/ID pipeline register is flushed (valid_out <= 0), squashing 0x00000024 (which was being fetched in IF stage).
 
-Cycle 10 (95ns - 105ns) — TARGET FETCH & SQUASHED BUBBLE RECOVERY:
-  - IF: Fetches target instruction at `debug_if_pc = 32'h0000_0010`.
-  - ID: Flushed bubble (`debug_id_valid = 0`).
-  - EX: Flushed bubble (`debug_ex_valid = 0`).
-  - `debug_flush` deasserts (`1'b0`).
-  - MEM: BNE instruction moves to MEM (`debug_mem_pc = 32'h0000_001C`).
+Cycle 10 (125 ns - 135 ns) — TARGET FETCH & SQUASHED BUBBLE RECOVERY:
+  - IF: Fetches target instruction at debug_if_pc = 32'h0000_0010.
+  - ID: Flushed bubble (debug_id_valid = 0).
+  - EX: Flushed bubble (debug_ex_valid = 0).
+  - debug_flush deasserts (1'b0).
+  - MEM: BNE instruction moves to MEM (debug_mem_pc = 32'h0000_001C).
 
-Cycle 11 (105ns - 115ns):
-  - IF: Sequential fetch at `0x00000014`.
-  - ID: Decodes target instruction `0x00000010`.
-  - WB: BNE instruction retires at WB (`debug_wb_retired = 1`, `debug_wb_pc = 32'h0000_001C`, `reg_write = 0`).
-  - Result: The wrong-path instructions (0x20 and 0x24) NEVER reached WB and NEVER wrote to the register file.
+Cycle 11 (135 ns - 145 ns):
+  - IF: Sequential fetch at 0x00000014.
+  - ID: Decodes target instruction 0x00000010.
+  - WB: BNE instruction retires at WB (debug_wb_retired = 1, debug_wb_pc = 32'h0000_001C, reg_write = 0).
+  - Result: The wrong-path instructions (0x20 and 0x24) were squashed in ID/EX and IF/ID, never reached WB, and produced zero architectural side effects.
 ```
 
 ---

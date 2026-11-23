@@ -95,9 +95,9 @@ The repository has progressed through the first three major architectural milest
   - Benchmark 2: Array Allocation & Memory Access with 3 load-use stalls (`benchmark_load_store.hex`, `tb_benchmark_load_store.v`).
   - Benchmark 3: Control Hazards, Dual Forwarding & Squashed Traps (`benchmark_control_hazards.hex`, `tb_benchmark_control_hazards.v`).
   - Rigorous CPI/IPC measurement harness with mathematically defined measurement windows (`tb_performance_cpi_ipc.v`).
-  - Synthesizable Verilog single-cycle reference processor (`rtl/reference/single_cycle_cpu.v`) and comparison testbench (`tb_single_cycle_comparison.v`).
+  - Synthesizable Verilog single-cycle reference processor (`rtl/reference/single_cycle_cpu.v`) and automated dual-core co-simulation comparison testbench (`tb_single_cycle_comparison.v`).
   - Full-CPU waveform timing documentation for load-use stalls and branch flushes ([`docs/waveform_evidence.md`](docs/waveform_evidence.md)).
-  - Synthesis scripts and timing constraints for Xilinx Vivado and Yosys ([`synthesis/README.md`](synthesis/README.md)) *(unverified locally; FPGA utilization, $F_{\max}$, GTKWave screenshot captures, and rebuilt report PDF pending toolchain execution)*.
+  - Synthesis scripts and timing constraints for Xilinx Vivado and Yosys ([`synthesis/README.md`](synthesis/README.md)) *(unverified locally; generic cell mapping verified independently on Yosys 0.52; FPGA utilization, $F_{\max}$, GTKWave screenshot captures, and rebuilt report PDF pending toolchain execution)*.
 
 ---
 
@@ -609,10 +609,12 @@ iverilog -g2012 -o simulation/tb_performance_cpi_ipc.vvp \
     rtl/stages/branch_controller.v
 vvp simulation/tb_performance_cpi_ipc.vvp
 
-# Verilog Single-Cycle Reference Comparison Suite (Verifies state matching against single-cycle baseline & CPI=1.0)
-iverilog -g2012 -o simulation/tb_single_cycle_comparison.vvp \
-    testbench/tb_single_cycle_comparison.v \
-    rtl/reference/single_cycle_cpu.v
+# Verilog Single-Cycle Reference Comparison Suite (Dual-core co-simulation & dynamic trace verification against single-cycle baseline)
+iverilog -g2012 -I rtl -I rtl/stages -I rtl/pipeline_registers \
+    -o simulation/tb_single_cycle_comparison.vvp \
+    rtl/reference/single_cycle_cpu.v \
+    rtl/cpu.v rtl/stages/*.v rtl/pipeline_registers/*.v \
+    testbench/tb_single_cycle_comparison.v
 vvp simulation/tb_single_cycle_comparison.vvp
 ```
 

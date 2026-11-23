@@ -131,7 +131,7 @@ module tb_performance_cpi_ipc;
 
             // Capture Convention A: At retirement of last workload instruction
             if (!win_a_captured && debug_wb_retired && debug_wb_pc == last_workload_pc) begin
-                win_a_cycles   <= total_cycles + 1;
+                win_a_cycles   <= total_cycles;
                 win_a_retired  <= retired_instructions + 1;
                 win_a_stalls   <= stall_cycles + (debug_stall ? 1 : 0);
                 win_a_flushes  <= flush_cycles + (debug_flush ? 1 : 0);
@@ -140,7 +140,7 @@ module tb_performance_cpi_ipc;
 
             // Capture Convention B: At first retirement of halt self-loop
             if (!win_b_captured && debug_wb_retired && debug_wb_pc == halt_pc) begin
-                win_b_cycles   <= total_cycles + 1;
+                win_b_cycles   <= total_cycles;
                 win_b_retired  <= retired_instructions + 1;
                 win_b_stalls   <= stall_cycles + (debug_stall ? 1 : 0);
                 win_b_flushes  <= flush_cycles + (debug_flush ? 1 : 0);
@@ -162,12 +162,22 @@ module tb_performance_cpi_ipc;
             halt_pc = halt_addr;
             last_workload_pc = last_pc;
 
-            // Reset state
+            // Reset state and clear all per-window counters for every benchmark run
             total_cycles = 0;
             retired_instructions = 0;
             stall_cycles = 0;
             flush_cycles = 0;
+
+            win_a_cycles   = 0;
+            win_a_retired  = 0;
+            win_a_stalls   = 0;
+            win_a_flushes  = 0;
             win_a_captured = 0;
+
+            win_b_cycles   = 0;
+            win_b_retired  = 0;
+            win_b_stalls   = 0;
+            win_b_flushes  = 0;
             win_b_captured = 0;
 
             // Clear memories
@@ -179,10 +189,10 @@ module tb_performance_cpi_ipc;
             // Load hex image
             $readmemh(hex_file, uut.u_if_stage.u_instr_mem.mem);
 
-            // Assert synchronous reset
+            // Assert synchronous reset and release cleanly away from clock edge
             rst = 1;
-            #20;
-            @(posedge clk);
+            repeat (3) @(posedge clk);
+            #2;
             rst = 0;
 
             // Wait until both windows captured or timeout
@@ -191,8 +201,22 @@ module tb_performance_cpi_ipc;
                 #1;
             end
 
+            // Strict failure checks for missing endpoints
+            if (!win_a_captured) begin
+                $fatal(1, "ERROR: Benchmark %0s timed out before reaching workload endpoint (0x%08h)!", name, last_pc);
+            end
+
             if (!win_b_captured) begin
-                $fatal(1, "ERROR: Benchmark %0s timed out before reaching halt condition!", name);
+                $fatal(1, "ERROR: Benchmark %0s timed out before reaching halt condition (0x%08h)!", name, halt_addr);
+            end
+
+            // Guard against division by zero or invalid counters
+            if (win_a_retired <= 0 || win_a_cycles <= 0) begin
+                $fatal(1, "ERROR: Benchmark %0s has invalid workload counts (cycles=%0d, retired=%0d)!", name, win_a_cycles, win_a_retired);
+            end
+
+            if (win_b_retired <= 0 || win_b_cycles <= 0) begin
+                $fatal(1, "ERROR: Benchmark %0s has invalid completion counts (cycles=%0d, retired=%0d)!", name, win_b_cycles, win_b_retired);
             end
 
             // Calculate metrics

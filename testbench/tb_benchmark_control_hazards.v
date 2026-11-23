@@ -16,7 +16,7 @@
 //   5. Immediate back-to-back Store-to-Load data dependency (SW then LW at same addr).
 //   6. Synchronous 1-cycle load-use interlock stall at LW 0x44 / ADD 0x48.
 //   7. Simultaneous dual RAW forwarding: Operand A from MEM/WB and Operand B from EX/MEM.
-//   8. Complete side-effect suppression of 7 wrong-path trap instructions (x5, x6, x7, x9, x10, x11, x17).
+//   8. Complete side-effect suppression of 7 wrong-path trap instructions (5 flushed: x5, x6, x9, x10, x17; 2 skipped/unfetched: x7, x11).
 //   9. Register x0 WB write-suppression invariant and read-as-zero integrity.
 //  10. Deterministic program completion detection and bounded cycle timeout.
 // =============================================================================
@@ -220,8 +220,8 @@ module tb_benchmark_control_hazards;
         $display("Halt Address: 0x0000005C | Timeout Limit: 500 cycles");
         $display("================================================================");
 
-        #20;
-        @(posedge clk);
+        repeat (3) @(posedge clk);
+        #2;
         rst = 0;
 
         // Run until program completion or timeout
@@ -293,7 +293,7 @@ module tb_benchmark_control_hazards;
                    uut.u_id_stage.registers.registers[6],
                    uut.u_id_stage.registers.registers[7]);
         test_count = test_count + 1;
-        $display("  [%02d] Wrong-path trap instructions 0x18, 0x1C, 0x20 squashed (x5=0, x6=0, x7=0) PASS", test_count);
+        $display("  [%02d] Wrong-path trap instructions suppressed (0x18, 0x1C flushed; 0x20 skipped; x5=0, x6=0, x7=0) PASS", test_count);
 
         // Check 8: BNE at 0x24 not taken (fall-through)
         if (bne_0x24_not_taken_count !== 1)
@@ -322,7 +322,7 @@ module tb_benchmark_control_hazards;
                    uut.u_id_stage.registers.registers[10],
                    uut.u_id_stage.registers.registers[11]);
         test_count = test_count + 1;
-        $display("  [%02d] Wrong-path trap instructions 0x30, 0x34, 0x38 squashed (x9=0, x10=0, x11=0) PASS", test_count);
+        $display("  [%02d] Wrong-path trap instructions suppressed (0x30, 0x34 flushed; 0x38 skipped; x9=0, x10=0, x11=0) PASS", test_count);
 
         // Check 12: Register x12 = 100
         if (uut.u_id_stage.registers.registers[12] !== 32'd100)
@@ -388,7 +388,7 @@ module tb_benchmark_control_hazards;
         if (uut.u_id_stage.registers.registers[17] !== 32'd0)
             $fatal(1, "FAIL Check 22: Trap 7 was NOT squashed! x17=%0d", uut.u_id_stage.registers.registers[17]);
         test_count = test_count + 1;
-        $display("  [%02d] Wrong-path trap instruction 0x58 squashed (x17=0) PASS", test_count);
+        $display("  [%02d] Wrong-path trap instruction 0x58 flushed from pipeline (x17=0) PASS", test_count);
 
         // Check 23: Register x0 WB write-suppression invariant and read-as-zero integrity
         if (x0_write_violation)
