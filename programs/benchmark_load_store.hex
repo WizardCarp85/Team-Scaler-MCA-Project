@@ -1,0 +1,82 @@
+// =============================================================================
+// Benchmark 2: Memory & Array Access Sequence (RV32I Subset)
+// Issue: #27 - End-to-End Verification & CPI/IPC Analysis
+//
+// Description:
+//   Initializes an array in data memory starting at base address 0x40 (byte 64):
+//     mem[0x40] = 10 (val0)
+//     mem[0x44] = 25 (val1)
+//     mem[0x48] = 40 (val2)
+//   Loads elements back using pointer arithmetic and computes accumulated sum:
+//     sum = 10 + 25 + 40 = 75 -> stored to mem[0x4C]
+//     diff = 75 - 10 = 65     -> stored to mem[0x50]
+//   Verifies store-to-load ordering by reading mem[0x4C] back into x10,
+//   computing x11 = x10 - x8 (= 75 - 75 = 0), and branching to done.
+//
+// Hazards & Control Exercised:
+//   - Base pointer and offset calculations
+//   - Multiple SW and LW operations across data memory
+//   - Load-use hazard #1: LW x5, 0(x2) followed immediately by ADD x6, x5, x4
+//     (requires 1-cycle pipeline interlock stall, then MEM/WB forwarding)
+//   - Load-use hazard #2: LW x10, 12(x1) followed immediately by SUB x11, x10, x8
+//     (requires 1-cycle pipeline interlock stall, then MEM/WB forwarding)
+//   - Store-to-load ordering: SW to 12(x1) followed by LW from 12(x1)
+//   - Taken forward branch (BEQ x11, x0, +8) jumping to done
+//   - Squash verification: trap at 0x50 (x12 = 99) is NEVER executed (x12 remains 0)
+//   - Deterministic completion via self-loop at 0x54 (BEQ x0, x0, 0)
+//
+// Final Architectural State Expected:
+//   Registers:
+//     x1=64, x2=68, x3=72, x4=10, x5=25, x6=35, x7=40,
+//     x8=75, x9=65, x10=75, x11=0, x12=0
+//   Data Memory:
+//     mem[0x40] (word 16) = 10
+//     mem[0x44] (word 17) = 25
+//     mem[0x48] (word 18) = 40
+//     mem[0x4C] (word 19) = 75
+//     mem[0x50] (word 20) = 65
+// =============================================================================
+// 0x00: addi x1, x0, 64       (base_ptr = 0x40)
+04000093
+// 0x04: addi x4, x0, 10       (val0 = 10)
+00a00213
+// 0x08: addi x5, x0, 25       (val1 = 25)
+01900293
+// 0x0C: addi x7, x0, 40       (val2 = 40)
+02800393
+// 0x10: sw   x4, 0(x1)        (mem[0x40] = 10)
+0040a023
+// 0x14: sw   x5, 4(x1)        (mem[0x44] = 25)
+0050a223
+// 0x18: sw   x7, 8(x1)        (mem[0x48] = 40)
+0070a423
+// 0x1C: addi x2, x1, 4        (ptr1 = 0x44)
+00408113
+// 0x20: addi x3, x1, 8        (ptr2 = 0x48)
+00808193
+// 0x24: lw   x4, 0(x1)        (reload val0 = mem[0x40] = 10)
+0000a203
+// 0x28: lw   x5, 0(x2)        (load val1 = mem[0x44] = 25)
+00012283
+// 0x2C: add  x6, x5, x4       (LOAD-USE HAZARD: x6 = 25 + 10 = 35)
+00428333
+// 0x30: lw   x7, 0(x3)        (load val2 = mem[0x48] = 40)
+0001a383
+// 0x34: add  x8, x6, x7       (x8 = 35 + 40 = 75)
+00730433
+// 0x38: sw   x8, 12(x1)       (mem[0x4C] = 75)
+0080a623
+// 0x3C: sub  x9, x8, x4       (x9 = 75 - 10 = 65)
+404404b3
+// 0x40: sw   x9, 16(x1)       (mem[0x50] = 65)
+0090a823
+// 0x44: lw   x10, 12(x1)      (STORE-TO-LOAD: x10 = mem[0x4C] = 75)
+00c0a503
+// 0x48: sub  x11, x10, x8     (LOAD-USE HAZARD: x11 = 75 - 75 = 0)
+408505b3
+// 0x4C: beq  x11, x0, 8       (if x11 == 0 goto done [0x54])
+00058463
+// 0x50: addi x12, x0, 99      (TRAP: squashed by branch)
+06300613
+// 0x54: beq  x0, x0, 0        (done: halt self-loop)
+00000063

@@ -1,0 +1,45 @@
+// =============================================================================
+// Benchmark 1: Arithmetic & Accumulator Loop (RV32I Subset)
+// Issue: #27 - End-to-End Verification & CPI/IPC Analysis
+//
+// Description:
+//   Calculates sum(1..5) = 15 into x3 and running difference 100 - sum(1..5) = 85
+//   into x4 using a loop with index x1 running from 1 to 5.
+//
+// Hazards & Control Exercised:
+//   - Back-to-back RAW data dependencies (EX->EX and MEM->EX forwarding)
+//   - Taken backwards branch (BNE x1, x2, -12) taken 4 times, flushing 2 wrong-path instructions
+//   - Not-taken branch fall-through on loop termination (x1 == 5)
+//   - Forward unconditional branch (BEQ x0, x0, +8) jumping over trap instruction
+//   - Squash verification: trap at 0x2C (x7 = 99) is NEVER executed (x7 remains 0)
+//   - Deterministic completion via self-loop at 0x30 (BEQ x0, x0, 0)
+//
+// Final Architectural State Expected:
+//   x1 = 5, x2 = 5, x3 = 15, x4 = 85, x5 = 15, x6 = 85, x7 = 0
+// =============================================================================
+// 0x00: addi x1, x0, 0        (i = 0)
+00000093
+// 0x04: addi x2, x0, 5        (limit = 5)
+00500113
+// 0x08: addi x3, x0, 0        (sum = 0)
+00000193
+// 0x0C: addi x4, x0, 100      (diff = 100)
+06400213
+// 0x10: addi x1, x1, 1        (loop: i++)
+00108093
+// 0x14: add  x3, x3, x1       (sum += i)
+001181b3
+// 0x18: sub  x4, x4, x1       (diff -= i)
+40120233
+// 0x1C: bne  x1, x2, -12      (if i != limit goto loop [0x10])
+fe209ae3
+// 0x20: addi x5, x3, 0        (copy sum -> x5 = 15)
+00018293
+// 0x24: addi x6, x4, 0        (copy diff -> x6 = 85)
+00020313
+// 0x28: beq  x0, x0, 8        (goto done [0x30], skip trap)
+00000463
+// 0x2C: addi x7, x0, 99       (TRAP: squashed by branch)
+06300393
+// 0x30: beq  x0, x0, 0        (done: halt self-loop)
+00000063
