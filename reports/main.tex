@@ -270,7 +270,7 @@ To maintain rigorous verification integrity without fabricating numbers:
 \begin{itemize}
     \item \textbf{Synthesis Scripts Status:} Non-project batch synthesis scripts for Xilinx Vivado (\texttt{synthesis/synth\_vivado.tcl}) and Yosys (\texttt{synthesis/synth\_yosys.ys}) with timing constraints (\texttt{synthesis/constraints.xdc}) are provided in the repository. The Yosys script syntax and generic cell mapping were verified independently by the project reviewer using Yosys 0.52; local synthesis execution remains unperformed as EDA synthesis tools (\texttt{yosys}, \texttt{vivado}) are not installed in the local execution environment.
     \item \textbf{Pending Hardware Metrics:} Measured FPGA resource utilization (LUTs, FFs, BRAMs) and post-implementation maximum operating frequency ($F_{\max}$) are pending execution on a target FPGA development host.
-    \item \textbf{Waveform Screenshots \& Rebuilt PDF:} Raw VCD simulation files are fully generated and verified; GUI-rendered GTKWave screenshot image captures and local recompilation of the IEEE report PDF (\texttt{reports/MCA Report.pdf}) are pending local toolchain installation (\texttt{pdflatex} is not installed in the local execution container; the exact build commands are \texttt{pdflatex -interaction=nonstopmode main.tex \&\& pdflatex -interaction=nonstopmode main.tex}).
+    \item \textbf{Waveform Screenshots:} Raw VCD simulation traces were generated and inspected; GUI-rendered GTKWave screenshot captures remain pending.
     \item \textbf{Simulation vs. Hardware Clock:} The 100\,MHz testbench clock period ($10.0\,\text{ns}$) is a simulation timing scale and is not claimed as verified FPGA timing closure.
 \end{itemize}
 

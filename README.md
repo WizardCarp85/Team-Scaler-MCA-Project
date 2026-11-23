@@ -98,7 +98,7 @@ The repository has progressed through the first three major architectural milest
   - Rigorous CPI/IPC measurement harness with mathematically defined measurement windows (`tb_performance_cpi_ipc.v`).
   - Synthesizable Verilog single-cycle reference processor (`rtl/reference/single_cycle_cpu.v`) and automated dual-core co-simulation comparison testbench (`tb_single_cycle_comparison.v`).
   - Full-CPU waveform timing documentation for load-use stalls and branch flushes ([`docs/waveform_evidence.md`](docs/waveform_evidence.md)).
-  - Synthesis scripts and timing constraints for Xilinx Vivado and Yosys ([`synthesis/README.md`](synthesis/README.md)) *(unverified locally; generic cell mapping verified independently on Yosys 0.52; FPGA utilization, $F_{\max}$, GTKWave screenshot captures, and rebuilt report PDF pending toolchain execution)*.
+  - Synthesis scripts and timing constraints for Xilinx Vivado and Yosys ([`synthesis/README.md`](synthesis/README.md)) *(unverified locally; generic cell mapping verified independently on Yosys 0.52; FPGA utilization, $F_{\max}$, and GTKWave screenshot captures pending toolchain execution)*.
 
 ---
 
