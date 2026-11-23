@@ -119,9 +119,9 @@ module tb_benchmark_load_store;
     reg program_completed = 0;
 
     // Specific load-use hazard tracking
-    reg stall_hazard1_detected = 0; // LW x5 at 0x28 / ADD at 0x2C
-    reg stall_hazard2_detected = 0; // LW x7 at 0x30 / ADD at 0x34
-    reg stall_hazard3_detected = 0; // LW x10 at 0x44 / SUB at 0x48
+    integer stall_hazard1_cycles = 0; // LW x5 at 0x28 / ADD at 0x2C
+    integer stall_hazard2_cycles = 0; // LW x7 at 0x30 / ADD at 0x34
+    integer stall_hazard3_cycles = 0; // LW x10 at 0x44 / SUB at 0x48
     integer other_stalls_count  = 0; // Any unexpected stall
 
     // Specific forwarding path flags
@@ -156,11 +156,11 @@ module tb_benchmark_load_store;
             // -----------------------------------------------------------------
             if (debug_stall) begin
                 if (debug_ex_pc == 32'h0000_0028 && debug_id_pc == 32'h0000_002C)
-                    stall_hazard1_detected <= 1;
+                    stall_hazard1_cycles <= stall_hazard1_cycles + 1;
                 else if (debug_ex_pc == 32'h0000_0030 && debug_id_pc == 32'h0000_0034)
-                    stall_hazard2_detected <= 1;
+                    stall_hazard2_cycles <= stall_hazard2_cycles + 1;
                 else if (debug_ex_pc == 32'h0000_0044 && debug_id_pc == 32'h0000_0048)
-                    stall_hazard3_detected <= 1;
+                    stall_hazard3_cycles <= stall_hazard3_cycles + 1;
                 else
                     other_stalls_count <= other_stalls_count + 1;
             end
@@ -380,22 +380,22 @@ module tb_benchmark_load_store;
         // Location-Specific Hazard & Control Checks
         // ---------------------------------------------------------------------
         // Check 18: Load-use hazard 1 (LW at 0x28 / ADD at 0x2C)
-        if (!stall_hazard1_detected)
-            $fatal(1, "FAIL Check 18: Load-use stall was NOT detected between LW at 0x28 and ADD at 0x2C");
+        if (stall_hazard1_cycles !== 1)
+            $fatal(1, "FAIL Check 18: Expected exactly 1 load-use stall cycle between LW at 0x28 and ADD at 0x2C, got %0d", stall_hazard1_cycles);
         test_count = test_count + 1;
-        $display("  [%02d] Load-use hazard 1 verified at LW 0x28 / ADD 0x2C PASS", test_count);
+        $display("  [%02d] Load-use hazard 1 verified at LW 0x28 / ADD 0x2C (exactly 1 stall cycle) PASS", test_count);
 
         // Check 19: Load-use hazard 2 (LW at 0x30 / ADD at 0x34)
-        if (!stall_hazard2_detected)
-            $fatal(1, "FAIL Check 19: Load-use stall was NOT detected between LW at 0x30 and ADD at 0x34");
+        if (stall_hazard2_cycles !== 1)
+            $fatal(1, "FAIL Check 19: Expected exactly 1 load-use stall cycle between LW at 0x30 and ADD at 0x34, got %0d", stall_hazard2_cycles);
         test_count = test_count + 1;
-        $display("  [%02d] Load-use hazard 2 verified at LW 0x30 / ADD 0x34 PASS", test_count);
+        $display("  [%02d] Load-use hazard 2 verified at LW 0x30 / ADD 0x34 (exactly 1 stall cycle) PASS", test_count);
 
         // Check 20: Load-use hazard 3 (LW at 0x44 / SUB at 0x48)
-        if (!stall_hazard3_detected)
-            $fatal(1, "FAIL Check 20: Load-use stall was NOT detected between LW at 0x44 and SUB at 0x48");
+        if (stall_hazard3_cycles !== 1)
+            $fatal(1, "FAIL Check 20: Expected exactly 1 load-use stall cycle between LW at 0x44 and SUB at 0x48, got %0d", stall_hazard3_cycles);
         test_count = test_count + 1;
-        $display("  [%02d] Load-use hazard 3 verified at LW 0x44 / SUB 0x48 PASS", test_count);
+        $display("  [%02d] Load-use hazard 3 verified at LW 0x44 / SUB 0x48 (exactly 1 stall cycle) PASS", test_count);
 
         // Check 21: No spurious/unrelated stalls occurred
         if (other_stalls_count !== 0)

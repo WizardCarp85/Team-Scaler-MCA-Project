@@ -1,0 +1,31 @@
+# =============================================================================
+# Yosys Open-Source Synthesis Script
+# Project: Team Scaler MCA Project - 5-Stage Pipelined RISC-V Processor
+# =============================================================================
+
+# Read Verilog Sources
+read_verilog ./rtl/pipeline_registers/*.v
+read_verilog ./rtl/stages/*.v
+read_verilog ./rtl/cpu.v
+
+# Elaborate Design Hierarchy
+hierarchy -check -top cpu
+
+# Perform High-Level Synthesis & Optimization
+proc
+opt
+fsm
+opt
+memory
+opt
+
+# Techmapping to generic gates
+techmap
+opt
+
+# Clean and Display Statistics
+clean
+stat
+
+# Optionally write synthesized netlist
+write_verilog ./synthesis/cpu_synth_generic.v
