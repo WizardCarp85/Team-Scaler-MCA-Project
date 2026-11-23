@@ -1,0 +1,24 @@
+00a00093 // 0x00: addi x1, x0, 10      # x1 = 10
+01400113 // 0x04: addi x2, x0, 20      # x2 = 20
+00a00193 // 0x08: addi x3, x0, 10      # x3 = 10
+00208863 // 0x0C: beq x1, x2, 16       # Not taken (10 != 20), falls through to 0x10
+01e00213 // 0x10: addi x4, x0, 30      # Fall-through executed: x4 = 30
+00308863 // 0x14: beq x1, x3, 16       # Taken (10 == 10), target = 0x24, flushes 0x18, 0x1C
+06300293 // 0x18: addi x5, x0, 99      # TRAP 1: flushed (x5 stays 0)
+06300313 // 0x1C: addi x6, x0, 99      # TRAP 2: flushed (x6 stays 0)
+06300393 // 0x20: addi x7, x0, 99      # TRAP 3: skipped (x7 stays 0)
+00309863 // 0x24: bne x1, x3, 16       # Branch target: Not taken (10 == 10), falls through to 0x28
+02800413 // 0x28: addi x8, x0, 40      # Fall-through executed: x8 = 40
+00209863 // 0x2C: bne x1, x2, 16       # Taken (10 != 20), target = 0x3C, flushes 0x30, 0x34
+06300493 // 0x30: addi x9, x0, 99      # TRAP 4: flushed (x9 stays 0)
+06300513 // 0x34: addi x10, x0, 99     # TRAP 5: flushed (x10 stays 0)
+06300593 // 0x38: addi x11, x0, 99     # TRAP 6: skipped (x11 stays 0)
+06400613 // 0x3C: addi x12, x0, 100    # Branch target: x12 = 100
+00c02023 // 0x40: sw x12, 0(x0)        # Immediate Store: mem[0] = 100
+00002683 // 0x44: lw x13, 0(x0)        # Immediate Load: x13 = mem[0] = 100
+00468733 // 0x48: add x14, x13, x4     # LOAD-USE STALL! x13 forwarded from MEM/WB. x14 = 100 + 30 = 130
+002087b3 // 0x4C: add x15, x1, x2      # x15 = 10 + 20 = 30
+40f70833 // 0x50: sub x16, x14, x15    # DUAL RAW FORWARDING: x14 from MEM/WB, x15 from EX/MEM! x16 = 130 - 30 = 100
+00c80463 // 0x54: beq x16, x12, 8      # Taken (100 == 100), target = 0x5C, skips trap at 0x58
+06300893 // 0x58: addi x17, x0, 99     # TRAP 7: flushed (x17 stays 0)
+00000063 // 0x5C: beq x0, x0, 0        # HALT self-loop at 0x5C

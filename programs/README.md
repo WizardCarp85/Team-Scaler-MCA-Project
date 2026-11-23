@@ -23,8 +23,11 @@ This directory contains RV32I-subset machine-code hex images loaded by the instr
 | Program | File | Instructions | Primary Purpose & Hazards Exercised | Completion Convention |
 |---|---|---|---|---|
 | **Fetch Test Data** | [`if_test.hex`](if_test.hex) | 8 | IF-only fetch & decoding verification across supported RV32I instruction formats (not a CPU benchmark). | Sequential end-of-file |
+| **Microtest 1** | [`microtest_one_instr.hex`](microtest_one_instr.hex) | 2 | Single workload instruction (`addi x1, x0, 42`) fill/drain and retirement write-edge validation. Proves exactly 5-cycle pipeline traversal latency (CPI = 5.0) and verifies that completion marker branch flushes are excluded from workload metrics. | Halt self-loop (`beq x0, x0, 0`) at PC `0x04` retiring at WB |
+| **Microtest 2** | [`microtest_load_use.hex`](microtest_load_use.hex) | 5 | Minimal 4-instruction load-use interlock sequence (`addi`, `sw`, `lw`, `add`). Validates pipeline fill/drain, exactly 1 stall cycle, and store-to-load forwarding without spurious stalls or flushes. | Halt self-loop (`beq x0, x0, 0`) at PC `0x10` retiring at WB |
 | **Benchmark 1** | [`benchmark_accumulate.hex`](benchmark_accumulate.hex) | 13 | Arithmetic accumulator loop computing $\sum_{i=1}^5 i = 15$ and $100 - \sum i = 85$. Exercises tight RAW forwarding (EX $\to$ EX, MEM $\to$ EX), 4 taken backward loop branches, 1 not-taken exit branch, forward branch over squashed trap, and self-loop halt. | Halt self-loop (`beq x0, x0, 0`) at PC `0x30` retiring at WB |
 | **Benchmark 2** | [`benchmark_load_store.hex`](benchmark_load_store.hex) | 22 | Array allocation and memory sequence. Exercises base-pointer arithmetic, multiple stores (`sw`), loads (`lw`), 3 separate load-use interlock stalls, MEM/WB forwarding, store-to-load data integrity, forward branch over squashed trap, and self-loop halt. | Halt self-loop (`beq x0, x0, 0`) at PC `0x54` retiring at WB |
+| **Benchmark 3** | [`benchmark_control_hazards.hex`](benchmark_control_hazards.hex) | 24 | Control hazards & dual forwarding sequence. Exercises conditional BEQ/BNE not-taken fall-throughs, taken branch flushes over 5 squashed trap instructions and 2 unfetched traps (7 traps total with zero side effects), immediate back-to-back SW-to-LW, 1-cycle load-use stall, simultaneous dual RAW forwarding to both operands, and self-loop halt. | Halt self-loop (`beq x0, x0, 0`) at PC `0x5C` retiring at WB |
 
 ---
 
@@ -280,7 +283,195 @@ Key signals to observe:
 
 ---
 
-## 5. Fetch Test Data (`if_test.hex`)
+## 5. Benchmark 3: Control Hazards & Dual Forwarding (`benchmark_control_hazards.hex`)
+
+### 5.1 Overview
+Benchmark 3 verifies complex control hazard interactions, branch prediction recoveries, back-to-back store-to-load memory access, and simultaneous dual RAW operand forwarding using `programs/benchmark_control_hazards.hex`.
+
+### 5.2 Assembly Program & Encodings
+
+| Byte Addr | Hex Code | Instruction | Operands | Description / Hazards Exercised |
+|:---:|:---:|---|---|---|
+| `0x00` | `00a00093` | `addi` | `x1, x0, 10` | $x1 = 10$ |
+| `0x04` | `01400113` | `addi` | `x2, x0, 20` | $x2 = 20$ |
+| `0x08` | `00a00193` | `addi` | `x3, x0, 10` | $x3 = 10$ |
+| `0x0C` | `00208863` | `beq`  | `x1, x2, 16` | If $x1 == x2$, branch to `0x1C`. **Not taken (10 != 20). Falls through.** |
+| `0x10` | `01e00213` | `addi` | `x4, x0, 30` | Fall-through executed: $x4 = 30$ |
+| `0x14` | `00308863` | `beq`  | `x1, x3, 16` | If $x1 == x3$, branch to `0x24`. **Taken (10 == 10). Flushes 0x18 (ID), 0x1C (IF).** |
+| `0x18` | `06300293` | `addi` | `x5, x0, 99` | **TRAP 1:** Squashed from ID stage. $x5$ remains 0. |
+| `0x1C` | `06300313` | `addi` | `x6, x0, 99` | **TRAP 2:** Squashed from IF stage. $x6$ remains 0. |
+| `0x20` | `06300393` | `addi` | `x7, x0, 99` | **TRAP 3:** Skipped (never fetched; branch targets 0x24). $x7$ remains 0. |
+| `0x24` | `00309863` | `bne`  | `x1, x3, 16` | If $x1 \neq x3$, branch to `0x34`. **Not taken (10 == 10). Falls through.** |
+| `0x28` | `02800413` | `addi` | `x8, x0, 40` | Fall-through executed: $x8 = 40$ |
+| `0x2C` | `00209863` | `bne`  | `x1, x2, 16` | If $x1 \neq x2$, branch to `0x3C`. **Taken (10 != 20). Flushes 0x30 (ID), 0x34 (IF).** |
+| `0x30` | `06300493` | `addi` | `x9, x0, 99` | **TRAP 4:** Squashed from ID stage. $x9$ remains 0. |
+| `0x34` | `06300513` | `addi` | `x10, x0, 99` | **TRAP 5:** Squashed from IF stage. $x10$ remains 0. |
+| `0x38` | `06300593` | `addi` | `x11, x0, 99` | **TRAP 6:** Skipped (never fetched; branch targets 0x3C). $x11$ remains 0. |
+| `0x3C` | `06400613` | `addi` | `x12, x0, 100` | Target instruction: $x12 = 100$ |
+| `0x40` | `00c02023` | `sw`   | `x12, 0(x0)` | Store: $\text{mem}[0] = 100$ |
+| `0x44` | `00002683` | `lw`   | `x13, 0(x0)` | Immediate Load: $x13 = \text{mem}[0] = 100$ |
+| `0x48` | `00468733` | `add`  | `x14, x13, x4` | **LOAD-USE HAZARD:** 1-cycle stall. Operand A forwarded from MEM/WB. $x14 = 100 + 30 = 130$ |
+| `0x4C` | `002087b3` | `add`  | `x15, x1, x2` | $x15 = 10 + 20 = 30$ |
+| `0x50` | `40f70833` | `sub`  | `x16, x14, x15` | **DUAL FORWARDING:** $x14$ from MEM/WB, $x15$ from EX/MEM! $x16 = 130 - 30 = 100$ |
+| `0x54` | `00c80463` | `beq`  | `x16, x12, 8` | If $x16 == x12$, branch to `0x5C`. **Taken (100 == 100). Flushes 0x58 (ID).** |
+| `0x58` | `06300893` | `addi` | `x17, x0, 99` | **TRAP 7:** Squashed from ID stage. $x17$ remains 0. |
+| `0x5C` | `00000063` | `beq`  | `x0, x0, 0` | **done:** Halt self-loop at `0x5C`. |
+
+### 5.3 Simulation & Verification
+```bash
+mkdir -p simulation
+iverilog -g2012 -o simulation/tb_benchmark_control_hazards.vvp \
+    testbench/tb_benchmark_control_hazards.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_benchmark_control_hazards.vvp
+```
+Expected output: `PASS: tb_benchmark_control_hazards (all 23 checks passed)`.
+
+### 5.4 Observed Execution Metrics & Diagnostic Counters
+- **Total Clock Cycles:** 29 cycles
+- **Retired Instructions:** 17 instructions
+- **Load-Use Stall Cycles:** 1 stall cycle (exactly 1 location-verified load-use hazard at LW 0x44 / ADD 0x48)
+- **Workload Branch Flushes:** 3 flushes (BEQ 0x14, BNE 0x2C, BEQ 0x54 taken branches)
+- **Halt Self-Loop Flushes:** 2 flushes (from in-place execution of `beq x0, x0, 0` at `0x5C`)
+- **Total Pipeline Flushes Detected:** 5 flushes
+- **Trap Suppression:** 5 traps flushed (`0x18`, `0x1C`, `0x30`, `0x34`, `0x58`) and 2 traps skipped (`0x20`, `0x38`); all 7 trap registers (`x5, x6, x7, x9, x10, x11, x17`) remain 0.
+
+#### Counter Measurement Window & Accounting Details
+- **Start Condition:** Counters activate on the first rising clock edge following synchronous active-high reset deassertion (`!rst`).
+- **Stop Condition:** Program completion is detected at cycle 27 when the halt self-loop (`0x5C: beq x0, x0, 0`) retires at Write-Back (`debug_wb_retired && debug_wb_pc == 32'h0000_005C`). The testbench executes 2 additional clock cycles before asserting final state checks and calling `$finish` at cycle 29.
+- **Architectural State Sampling Timing:**
+  - Because instructions execute in strict in-order sequence, when the first retirement of `0x5C` occurs at WB, all earlier workload stores and register writes have completed and committed.
+  - The CPU does not freeze clocking on completion; the halt instruction `beq x0, x0, 0` continues executing harmlessly in-place. Because it has `rd=0`, `reg_write=0`, and `mem_write=0`, it produces no register or memory side effects, ensuring the architectural state remains stable and immutable.
+- **Halt Self-Loop Contribution:**
+  - The halt instruction (`beq x0, x0, 0`) evaluates as taken in the Execute stage, asserting 2 additional pipeline flush cycles (bringing total flushes from 3 to 5).
+  - Its initial retirement at WB increments `retired_count` from 16 (algorithmic instructions) to 17.
+  - The 2 settling cycles increment `cycle_count` from 27 to 29.
+- **Important Note on Performance Metrics:** These values are diagnostic simulation counters used solely to verify program progression and deterministic test completion. They do **not** represent validated CPI/IPC benchmark figures.
+
+---
+
+## 6. CPI / IPC Measurement & Performance Analysis
+
+### 6.1 Measurement Windows & Definitions
+In pipelined processor verification, reporting cycle and instruction metrics requires clearly defining the measurement boundary to prevent counting arbitrary completion loop cycles. We define two reproducible conventions:
+
+1. **Convention A (Pure Workload Window — Recommended):**
+   - **Start:** Clock cycle immediately following reset deassertion (`!rst`).
+   - **End:** Clock cycle when the final algorithmic workload instruction completes Write-Back and commits to the architectural register file (`debug_wb_retired && debug_wb_pc == LAST_WORKLOAD_PC`). Under the documented convention counting from the first post-reset rising edge through the WB retirement/write edge inclusively, this endpoint edge is included.
+   - **Instructions:** Only true workload instructions executed. The halt marker is **excluded**.
+   - **Cycles:** Elapsed cycles from reset release to completion of the workload write.
+   - **Event Attribution:** Workload-attributed branch flushes are tracked by inspecting the executing PC in the Execute stage (`debug_ex_pc != halt_pc`). This strictly separates completion-marker branch flushes from genuine workload control-hazard penalties.
+2. **Convention B (Completion-Inclusive Window):**
+   - **Start:** Clock cycle immediately following reset deassertion (`!rst`).
+   - **End:** Clock cycle when the halt self-loop instruction (`beq x0, x0, 0`) first completes at Write-Back (`debug_wb_retired && debug_wb_pc == HALT_PC`).
+   - **Instructions:** Workload instructions $+ 1$ (the single halt instruction retirement).
+   - **Cycles:** Elapsed cycles until the halt marker first completes Write-Back (includes the cycles for the halt instruction to traverse EX $\to$ MEM $\to$ WB; excludes subsequent infinite looping).
+
+### 6.2 Empirical Measurements Summary
+
+| Workload | Window Convention | Measured Cycles | Retired Instructions | Stalls | Flushes | Measured CPI | Measured IPC |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Microtest 1** (Single ADDI) | Convention A (Pure Workload) | 5 | 1 | 0 | 0 | **5.0000** | **0.2000** |
+| | Convention B (Completion-Inclusive) | 6 | 2 | 0 | 1 | **3.0000** | **0.3333** |
+| **Microtest 2** (Load-Use Interlock) | Convention A (Pure Workload) | 9 | 4 | 1 | 0 | **2.2500** | **0.4444** |
+| | Convention B (Completion-Inclusive) | 10 | 5 | 1 | 1 | **2.0000** | **0.5000** |
+| **Benchmark 1** (Accumulator Loop) | Convention A (Pure Workload) | 39 | 27 | 0 | 5 | **1.4444** | **0.6923** |
+| | Convention B (Completion-Inclusive) | 42 | 28 | 0 | 6 | **1.5000** | **0.6667** |
+| **Benchmark 2** (Load/Store Sequence) | Convention A (Pure Workload) | 27 | 20 | 3 | 1 | **1.3500** | **0.7407** |
+| | Convention B (Completion-Inclusive) | 30 | 21 | 3 | 2 | **1.4286** | **0.7000** |
+| **Benchmark 3** (Control Hazards) | Convention A (Pure Workload) | 25 | 16 | 1 | 3 | **1.5625** | **0.6400** |
+| | Convention B (Completion-Inclusive) | 28 | 17 | 1 | 4 | **1.6471** | **0.6071** |
+
+### 6.3 Run CPI/IPC Measurement Suite
+```bash
+mkdir -p simulation
+iverilog -g2012 -o simulation/tb_performance_cpi_ipc.vvp \
+    testbench/tb_performance_cpi_ipc.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_performance_cpi_ipc.vvp
+```
+
+---
+
+## 7. Verilog Single-Cycle Baseline Comparison
+
+To evaluate the architectural impact of 5-stage pipelining against a non-pipelined design, a synthesizable Verilog single-cycle reference processor was implemented ([`rtl/reference/single_cycle_cpu.v`](../rtl/reference/single_cycle_cpu.v)) executing the identical 7-instruction subset.
+
+### 7.1 Quantitative Comparison (Pure Workload Window)
+
+| Workload | Architecture | Cycles | Retired Instrs | CPI | IPC | Compared State |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| **Microtest 1** (ADDI) | Single-Cycle Reference | 1 | 1 | 1.0000 | 1.0000 | Matched (x1=42) |
+| | 5-Stage Pipelined CPU | 5 | 1 | 5.0000 | 0.2000 | Matched (x1=42) |
+| **Microtest 2** (Load-Use) | Single-Cycle Reference | 4 | 4 | 1.0000 | 1.0000 | Matched (x1,x2,x3,mem[0]) |
+| | 5-Stage Pipelined CPU | 9 | 4 | 2.2500 | 0.4444 | Matched (x1,x2,x3,mem[0]) |
+| **Benchmark 1** (Loop) | Single-Cycle Reference | 27 | 27 | 1.0000 | 1.0000 | Matched (x1–x7) |
+| | 5-Stage Pipelined CPU | 39 | 27 | 1.4444 | 0.6923 | Matched (x1–x7) |
+| **Benchmark 2** (Memory) | Single-Cycle Reference | 20 | 20 | 1.0000 | 1.0000 | Matched (x1–x12, mem[16:20]) |
+| | 5-Stage Pipelined CPU | 27 | 20 | 1.3500 | 0.7407 | Matched (x1–x12, mem[16:20]) |
+| **Benchmark 3** (Control) | Single-Cycle Reference | 16 | 16 | 1.0000 | 1.0000 | Matched (x1–x17, mem[0]) |
+| | 5-Stage Pipelined CPU | 25 | 16 | 1.5625 | 0.6400 | Matched (x1–x17, mem[0]) |
+
+> [!NOTE]
+> **Dynamic Trace & Performance Qualification:** The dual-core co-simulation harness verifies identical execution order by comparing the dynamic sequence of retired Program Counter (PC) values and the corresponding instruction-memory words at those PCs in memory between the single-cycle and pipelined cores. In software simulation, single-cycle execution achieves $\text{CPI}=1.0$, while the pipelined CPU exhibits $\text{CPI} > 1$ due to fill/drain latency, load-use interlock stalls, and branch redirection flushes. In physical hardware, pipelining aims to achieve higher throughput by dividing the critical path into shorter stages, enabling a higher operating clock frequency ($f_{\text{pipe}} > f_{\text{single}}$). A physical execution speedup is realized only if the hardware frequency multiplier exceeds the CPI penalty. Because static timing analysis on hardware was not executed for both implementations, real-time speedup is not claimed; the numbers demonstrate architectural cycle and instruction dynamics under identical workload conditions.
+
+### 7.2 Run Single-Cycle Comparison Testbench
+```bash
+mkdir -p simulation
+iverilog -g2012 -I rtl -I rtl/stages -I rtl/pipeline_registers \
+    -o simulation/tb_single_cycle_comparison.vvp \
+    rtl/reference/single_cycle_cpu.v \
+    rtl/cpu.v rtl/stages/*.v rtl/pipeline_registers/*.v \
+    testbench/tb_single_cycle_comparison.v
+vvp simulation/tb_single_cycle_comparison.vvp
+```
+Expected output: `ALL 5 CO-SIMULATION COMPARISON TESTS PASSED SUCCESSFULLY`.
+
+---
+
+## 8. Fetch Test Data (`if_test.hex`)
 
 IF-only test data, not a CPU benchmark. It has one instruction of each of the seven supported types, plus SUB and a second branch form:
 

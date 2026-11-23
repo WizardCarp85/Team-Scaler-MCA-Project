@@ -1,0 +1,5 @@
+00a00093 // addi x1, x0, 10 (PC 0x00)
+00102023 // sw x1, 0(x0)     (PC 0x04)
+00002103 // lw x2, 0(x0)     (PC 0x08)
+001101b3 // add x3, x2, x1   (PC 0x0C, load-use hazard on x2: 1 stall)
+00000063 // beq x0, x0, 0    (PC 0x10, halt loop)

@@ -89,8 +89,16 @@ The repository has progressed through the first three major architectural milest
     - Comprehensive observability with exposed debug ports for stage PCs, instruction words, validity bits, register writes, memory transactions, and hazard metrics.
     - Self-checking integration test suite (`tb_cpu.v`, `tb_top.v`) executing arithmetic, memory, hazard interlocks, and branch redirection sequences in program order.
     - Complete architectural specification contract in [`docs/top_level_cpu_interface.md`](docs/top_level_cpu_interface.md).
-- [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Upcoming)**
-  - Comprehensive assembly verification programs, CPI/IPC calculation, and performance reports.
+- [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Related to #27 — Work Completed on Branch, PR Pending)**
+  - Comprehensive assembly verification suite covering loops, memory access sequences, and control hazards ([`programs/README.md`](programs/README.md)).
+  - Diagnostic microtests: 1-instruction fill/drain (`microtest_one_instr.hex`) and 4-instruction load-use interlock (`microtest_load_use.hex`).
+  - Benchmark 1: Arithmetic & Accumulator Loop (`benchmark_accumulate.hex`, `tb_benchmark_accumulate.v`).
+  - Benchmark 2: Array Allocation & Memory Access with 3 load-use stalls (`benchmark_load_store.hex`, `tb_benchmark_load_store.v`).
+  - Benchmark 3: Control Hazards, Dual Forwarding & Squashed Traps (`benchmark_control_hazards.hex`, `tb_benchmark_control_hazards.v`).
+  - Rigorous CPI/IPC measurement harness with mathematically defined measurement windows (`tb_performance_cpi_ipc.v`).
+  - Synthesizable Verilog single-cycle reference processor (`rtl/reference/single_cycle_cpu.v`) and automated dual-core co-simulation comparison testbench (`tb_single_cycle_comparison.v`).
+  - Full-CPU waveform timing documentation for load-use stalls and branch flushes ([`docs/waveform_evidence.md`](docs/waveform_evidence.md)).
+  - Synthesis scripts and timing constraints for Xilinx Vivado and Yosys ([`synthesis/README.md`](synthesis/README.md)) *(unverified locally; generic cell mapping verified independently on Yosys 0.52; FPGA utilization, $F_{\max}$, and GTKWave screenshot captures pending toolchain execution)*.
 
 ---
 
@@ -172,17 +180,22 @@ Team-Scaler-MCA-Project/
 │   ├── hazard_detection_interface.md# Load-use hazard detection & stall control
 │   ├── branch_hazard_coordination.md# Branch redirect, pipeline flush & hazard stall specification
 │   ├── forwarding_interface.md      # EX-stage forwarding & operand bypass specification
-│   └── top_level_cpu_interface.md   # Top-level pipelined CPU interface & integration contract
+│   ├── top_level_cpu_interface.md   # Top-level pipelined CPU interface & integration contract
+│   ├── waveform_evidence.md         # Full-CPU waveform timing evidence & GTKWave guide
+│   └── phase2_interview_prep.md     # Phase II technical viva & interview preparation guide
 ├── programs/
 │   ├── README.md                    # Hex test image & benchmark suite documentation
 │   ├── if_test.hex                  # Instruction image for fetch testing
 │   ├── benchmark_accumulate.hex     # Benchmark 1: Arithmetic & accumulator loop
-│   └── benchmark_load_store.hex     # Benchmark 2: Memory & array access sequence
-├── reports/                         # Performance reports and simulation analysis (M6)
+│   ├── benchmark_load_store.hex     # Benchmark 2: Memory & array access sequence
+│   └── benchmark_control_hazards.hex# Benchmark 3: Control hazards & dual forwarding sequence
+├── reports/                         # Final IEEE report (main.tex), figures, and performance data
 ├── rtl/
 │   ├── cpu.v                        # Top-level pipelined CPU module
 │   ├── top.v                        # Top-level wrapper / alias
 │   ├── common/                      # Shared parameters and constants
+│   ├── reference/
+│   │   └── single_cycle_cpu.v       # Synthesizable Verilog single-cycle baseline reference CPU
 │   ├── pipeline_registers/
 │   │   ├── if_id_reg.v              # IF/ID boundary register
 │   │   ├── id_ex_reg.v              # ID/EX boundary register
@@ -210,12 +223,20 @@ Team-Scaler-MCA-Project/
 │       ├── forwarding_unit.v        # EX-stage forwarding unit
 │       └── forwarding.v             # Forwarding unit wrapper / alias
 ├── simulation/                      # Simulation binaries and VCD waveform output
+├── synthesis/                       # FPGA synthesis scripts and constraints
+│   ├── README.md                    # Synthesis reproducibility & timing analysis guide
+│   ├── synth_vivado.tcl             # Vivado non-project batch synthesis script
+│   ├── synth_yosys.ys               # Yosys open-source synthesis script
+│   └── constraints.xdc              # 100 MHz timing constraints
 ├── testbench/
 │   ├── fixtures/                    # Test hex programs and fixtures
 │   ├── tb_cpu.v                     # Top-level pipelined CPU integration testbench
 │   ├── tb_top.v                     # Top-level wrapper verification testbench
 │   ├── tb_benchmark_accumulate.v    # Benchmark 1 (Accumulate Loop) self-checking testbench
 │   ├── tb_benchmark_load_store.v    # Benchmark 2 (Memory Load/Store) self-checking testbench
+│   ├── tb_benchmark_control_hazards.v # Benchmark 3 (Control Hazards) self-checking testbench
+│   ├── tb_performance_cpi_ipc.v     # Reproducible CPI/IPC measurement harness
+│   ├── tb_single_cycle_comparison.v # Single-cycle baseline comparison testbench
 │   ├── tb_alu.v                     # ALU testbench
 │   ├── tb_alu_control.v             # ALU control testbench
 │   ├── tb_branch_unit.v             # Branch unit testbench
@@ -534,6 +555,68 @@ iverilog -g2012 -o simulation/tb_benchmark_load_store.vvp \
     rtl/stages/forwarding_unit.v \
     rtl/stages/branch_controller.v
 vvp simulation/tb_benchmark_load_store.vvp
+
+# Benchmark 3: Control Hazards & Dual Forwarding (BEQ/BNE taken/not-taken, dual forwarding, squashed traps)
+iverilog -g2012 -o simulation/tb_benchmark_control_hazards.vvp \
+    testbench/tb_benchmark_control_hazards.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_benchmark_control_hazards.vvp
+
+# Reproducible CPI / IPC Measurement Harness (Evaluates all benchmarks across standard measurement windows)
+iverilog -g2012 -o simulation/tb_performance_cpi_ipc.vvp \
+    testbench/tb_performance_cpi_ipc.v \
+    rtl/cpu.v \
+    rtl/stages/if_stage.v \
+    rtl/stages/pc.v \
+    rtl/stages/instr_mem.v \
+    rtl/pipeline_registers/if_id_reg.v \
+    rtl/stages/id_stage.v \
+    rtl/stages/instruction_decoder.v \
+    rtl/stages/register_file.v \
+    rtl/stages/main_control.v \
+    rtl/pipeline_registers/id_ex_reg.v \
+    rtl/stages/ex_stage.v \
+    rtl/stages/alu.v \
+    rtl/stages/alu_control.v \
+    rtl/stages/branch_unit.v \
+    rtl/pipeline_registers/ex_mem_reg.v \
+    rtl/stages/mem_stage.v \
+    rtl/stages/data_mem.v \
+    rtl/pipeline_registers/mem_wb_reg.v \
+    rtl/stages/wb_stage.v \
+    rtl/stages/hazard_detection.v \
+    rtl/stages/forwarding_unit.v \
+    rtl/stages/branch_controller.v
+vvp simulation/tb_performance_cpi_ipc.vvp
+
+# Verilog Single-Cycle Reference Comparison Suite (Dual-core co-simulation & dynamic trace verification against single-cycle baseline)
+iverilog -g2012 -I rtl -I rtl/stages -I rtl/pipeline_registers \
+    -o simulation/tb_single_cycle_comparison.vvp \
+    rtl/reference/single_cycle_cpu.v \
+    rtl/cpu.v rtl/stages/*.v rtl/pipeline_registers/*.v \
+    testbench/tb_single_cycle_comparison.v
+vvp simulation/tb_single_cycle_comparison.vvp
 ```
 
 ### Viewing Waveforms
