@@ -1,0 +1,2 @@
+02a00093 // addi x1, x0, 42 (PC 0x00)
+00000063 // beq x0, x0, 0 (PC 0x04, halt loop)

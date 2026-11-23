@@ -91,6 +91,7 @@ The repository has progressed through the first three major architectural milest
     - Complete architectural specification contract in [`docs/top_level_cpu_interface.md`](docs/top_level_cpu_interface.md).
 - [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Related to #27 — Work Completed on Branch, PR Pending)**
   - Comprehensive assembly verification suite covering loops, memory access sequences, and control hazards ([`programs/README.md`](programs/README.md)).
+  - Diagnostic microtests: 1-instruction fill/drain (`microtest_one_instr.hex`) and 4-instruction load-use interlock (`microtest_load_use.hex`).
   - Benchmark 1: Arithmetic & Accumulator Loop (`benchmark_accumulate.hex`, `tb_benchmark_accumulate.v`).
   - Benchmark 2: Array Allocation & Memory Access with 3 load-use stalls (`benchmark_load_store.hex`, `tb_benchmark_load_store.v`).
   - Benchmark 3: Control Hazards, Dual Forwarding & Squashed Traps (`benchmark_control_hazards.hex`, `tb_benchmark_control_hazards.v`).

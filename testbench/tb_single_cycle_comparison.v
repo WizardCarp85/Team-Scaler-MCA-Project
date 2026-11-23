@@ -11,9 +11,10 @@
 //
 // Verification Scope:
 //   1. Dynamic Instruction Sequence Equivalence:
-//      Captures the ordered dynamic retirement sequence (PC and instruction word)
-//      for both processors and verifies that every executed instruction matches
-//      bit-for-bit in strict architectural program order.
+//      Captures the ordered dynamic retirement sequence of Program Counter (PC)
+//      values and the corresponding instruction-memory words associated with those PCs
+//      for both processors, verifying that every executed instruction step matches
+//      in strict architectural program order.
 //   2. Workload & Completion Window Bounds:
 //      Enforces strict timeout and missing-endpoint failure checks ($fatal) if
 //      either processor fails to reach the workload endpoint or completion marker.
@@ -22,7 +23,8 @@
 //      directly between the two cores, as well as against independent golden values.
 //   4. Baseline Performance Measurement:
 //      Demonstrates empirical single-cycle baseline (CPI = 1.000) versus
-//      pipelined cycle count and throughput overheads.
+//      pipelined cycle count and throughput overheads, using consistent
+//      retirement write-edge cycle boundaries.
 // =============================================================================
 
 `timescale 1ns/1ps
@@ -241,6 +243,11 @@ module tb_single_cycle_comparison;
                 end
 
                 // --- Pipelined Processor Step ---
+                // The pipelined instruction enters the WB stage when pipe_debug_wb_retired is asserted.
+                // On the next rising clock edge, this instruction commits its write-back data to the
+                // architectural register file. Under the inclusive convention counting from the first
+                // post-reset clock edge through the WB retirement/write edge inclusively, the cycle
+                // count at completion includes this write edge (pipe_total_cycles + 1).
                 if (!pipe_halt_completed) begin
                     pipe_total_cycles = pipe_total_cycles + 1;
 
@@ -250,7 +257,7 @@ module tb_single_cycle_comparison;
                         pipe_retired_count = pipe_retired_count + 1;
 
                         if (pipe_debug_wb_pc == last_workload_pc && !pipe_workload_reached) begin
-                            pipe_workload_cycles = pipe_total_cycles;
+                            pipe_workload_cycles = pipe_total_cycles + 1;
                             pipe_workload_retired = pipe_retired_count;
                             pipe_workload_reached = 1;
                         end
@@ -326,6 +333,42 @@ module tb_single_cycle_comparison;
         $display("================================================================");
         $display("DUAL-CORE AUTOMATED CO-SIMULATION & COMPARATIVE VERIFICATION");
         $display("================================================================");
+        $display("");
+
+        // =====================================================================
+        // Microtest 1: Single Instruction (ADDI) Fill/Drain Validation
+        // =====================================================================
+        run_comparison_benchmark(
+            "Microtest 1: Single Instruction (ADDI)",
+            "programs/microtest_one_instr.hex",
+            32'h0000_0004,
+            32'h0000_0000
+        );
+        if (sc_dut.registers[1] !== pipe_dut.u_id_stage.registers.registers[1])
+            $fatal(1, "Microtest 1 core-to-core mismatch x1");
+        if (sc_dut.registers[1] !== 32'd42)
+            $fatal(1, "Microtest 1 golden mismatch x1");
+        test_count = test_count + 1;
+        $display("  [%02d] Microtest 1: Core-to-Core & Golden Architectural State Check (x1=42): MATCH PASS", test_count);
+        $display("");
+
+        // =====================================================================
+        // Microtest 2: 4-Instruction Load-Use Hazard Interlock Validation
+        // =====================================================================
+        run_comparison_benchmark(
+            "Microtest 2: Load-Use Hazard Interlock",
+            "programs/microtest_load_use.hex",
+            32'h0000_0010,
+            32'h0000_000C
+        );
+        if (sc_dut.registers[1] !== pipe_dut.u_id_stage.registers.registers[1]) $fatal(1, "Microtest 2 core mismatch x1");
+        if (sc_dut.registers[2] !== pipe_dut.u_id_stage.registers.registers[2]) $fatal(1, "Microtest 2 core mismatch x2");
+        if (sc_dut.registers[3] !== pipe_dut.u_id_stage.registers.registers[3]) $fatal(1, "Microtest 2 core mismatch x3");
+        if (sc_dut.dmem[0]      !== pipe_dut.u_mem_stage.u_data_mem.mem[0])    $fatal(1, "Microtest 2 core mismatch dmem[0]");
+        if (sc_dut.registers[3] !== 32'd20) $fatal(1, "Microtest 2 golden mismatch x3");
+        if (sc_dut.dmem[0]      !== 32'd10) $fatal(1, "Microtest 2 golden mismatch dmem[0]");
+        test_count = test_count + 1;
+        $display("  [%02d] Microtest 2: Core-to-Core & Golden Architectural State Check (x1,x2,x3,mem[0]): MATCH PASS", test_count);
         $display("");
 
         // =====================================================================
