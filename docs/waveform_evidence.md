@@ -11,8 +11,10 @@
 
 This document presents reproducible waveform timing evidence from full-CPU simulations of the integrated 5-stage pipelined processor. All signal transitions, timing offsets, and cycle boundaries documented below were verified directly from the generated Value Change Dump (`.vcd`) simulation traces (`simulation/tb_benchmark_load_store.vcd` and `simulation/tb_benchmark_accumulate.vcd`).
 
-> [!NOTE]
-> **VCD Analysis & GUI Inspection Status:** The timing intervals and signal transitions reported in this document are extracted and verified directly from the simulation VCD files. GTKWave GUI inspection is documented as a manual viewing procedure in [Section 4](#4-how-to-inspect-and-capture-screenshots-in-gtkwave-on-macos); GUI screenshots have not been captured because GTKWave is not installed in this headless terminal environment.
+> [!IMPORTANT]
+> **Waveform Evidence & Toolchain Status Distinction:**
+> - **Cycle-Accurate VCD Trace Evidence (Verified & Complete):** All signal transitions, timing offsets, and cycle boundaries documented below were extracted and verified directly from the simulation Value Change Dump (`.vcd`) traces (`simulation/tb_benchmark_load_store.vcd` and `simulation/tb_benchmark_accumulate.vcd`) generated via Icarus Verilog (`iverilog` / `vvp`).
+> - **GTKWave GUI Rendered Screenshots (Pending Toolchain Execution):** GTKWave is not installed in this headless execution environment. Therefore, GUI-rendered screenshot image captures are explicitly marked as **pending** manual execution on a workstation with a graphical display and GTKWave installed. The full reproduction and viewing procedure is documented in [Section 4](#4-how-to-inspect-and-capture-screenshots-in-gtkwave-on-macos).
 
 ---
 
