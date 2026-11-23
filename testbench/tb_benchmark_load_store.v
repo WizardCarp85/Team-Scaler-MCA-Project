@@ -10,17 +10,24 @@
 //   Executes programs/benchmark_load_store.hex on the integrated 5-stage CPU.
 //   Verifies:
 //     1. Base pointer arithmetic and word indexing (ADDI).
-//     2. Array storage into data memory (SW) at multiple offsets (0x40, 0x44, 0x48).
+//     2. Array storage into data memory (SW) at offsets (0x40, 0x44, 0x48, 0x4C, 0x50).
 //     3. Array loading from data memory (LW).
-//     4. Synchronous 1-cycle pipeline interlock for Load-Use Hazards:
-//        - Hazard 1: LW x5, 0(x2) followed immediately by ADD x6, x5, x4.
-//        - Hazard 2: LW x10, 12(x1) followed immediately by SUB x11, x10, x8.
-//     5. RAW data forwarding from MEM/WB stage to EX stage after stall cycle.
+//     4. Location-specific verification of each of the 3 intended load-use stall events:
+//        - Hazard 1: LW x5 at 0x28 stalling consumer ADD at 0x2C.
+//        - Hazard 2: LW x7 at 0x30 stalling consumer ADD at 0x34.
+//        - Hazard 3: LW x10 at 0x44 stalling consumer SUB at 0x48.
+//        - Guarantees 0 spurious or unrelated stall cycles occur.
+//     5. Location-specific verification of RAW forwarding paths:
+//        - MEM->EX forwarding of loaded x5 into ADD at 0x2C (debug_forward_a = 2'b01).
+//        - EX->EX forwarding of computed x8 into store write data at 0x38 (debug_forward_b = 2'b10).
+//        - MEM->EX forwarding of computed x8 into SUB at 0x3C (debug_forward_a = 2'b01).
 //     6. Store-to-load ordering: SW to 12(x1) followed later by LW from 12(x1).
-//     7. Taken forward branch (BEQ x11, x0, +8) jumping to halt loop.
-//     8. Wrong-path instruction squash: trap at 0x50 (x12 = 99) never executed.
-//     9. Clean completion detection at halt self-loop (0x54).
-//    10. Complete architectural state verification (registers x1-x12, data memory words 16-20).
+//     7. Branch evaluation tied to instruction PC:
+//        - BEQ at 0x4C taken forward branch to 0x54 (skipping trap; flush asserted).
+//        - Completion self-loop flushes isolated and accounted separately.
+//     8. Side-effect suppression (trap at 0x50 squashed; x12 remains 0).
+//     9. Complete architectural state verification (registers x1-x12, data memory words 16-20).
+//    10. Register x0 read-zero and WB write-suppression invariant runtime checks.
 //    11. Bounded cycle timeout protection against hang/infinite loop.
 // =============================================================================
 
@@ -106,21 +113,105 @@ module tb_benchmark_load_store;
     // Simulation metrics & tracking
     integer cycle_count = 0;
     integer retired_count = 0;
-    integer stall_cycles_detected = 0;
-    integer flush_cycles_detected = 0;
+    integer total_stall_cycles = 0;
+    integer total_flush_cycles = 0;
     integer test_count = 0;
     reg program_completed = 0;
 
-    // Cycle Monitor
+    // Specific load-use hazard tracking
+    reg stall_hazard1_detected = 0; // LW x5 at 0x28 / ADD at 0x2C
+    reg stall_hazard2_detected = 0; // LW x7 at 0x30 / ADD at 0x34
+    reg stall_hazard3_detected = 0; // LW x10 at 0x44 / SUB at 0x48
+    integer other_stalls_count  = 0; // Any unexpected stall
+
+    // Specific forwarding path flags
+    reg fwd_mem_wb_load_x5_verified = 0; // At 0x2C: debug_forward_a == 2'b01
+    reg fwd_ex_mem_store_x8_verified = 0; // At 0x38: debug_forward_b == 2'b10
+    reg fwd_mem_wb_sub_x8_verified   = 0; // At 0x3C: debug_forward_a == 2'b01
+
+    // Branch tracking
+    integer workload_branch_taken_count = 0; // BEQ at 0x4C taken (target 0x54)
+    integer halt_loop_flush_count = 0;       // BEQ at 0x54 completion self-loop
+
+    // x0 runtime check flags
+    reg x0_write_violation = 0;
+    reg x0_read_violation  = 0;
+
+    // Cycle Monitor and Event Logger
     always @(posedge clk) begin
         if (!rst) begin
             cycle_count <= cycle_count + 1;
+
             if (debug_wb_retired)
                 retired_count <= retired_count + 1;
+
             if (debug_stall)
-                stall_cycles_detected <= stall_cycles_detected + 1;
+                total_stall_cycles <= total_stall_cycles + 1;
+
             if (debug_flush)
-                flush_cycles_detected <= flush_cycles_detected + 1;
+                total_flush_cycles <= total_flush_cycles + 1;
+
+            // -----------------------------------------------------------------
+            // 1. Location-Specific Load-Use Stall Detection
+            // -----------------------------------------------------------------
+            if (debug_stall) begin
+                if (debug_ex_pc == 32'h0000_0028 && debug_id_pc == 32'h0000_002C)
+                    stall_hazard1_detected <= 1;
+                else if (debug_ex_pc == 32'h0000_0030 && debug_id_pc == 32'h0000_0034)
+                    stall_hazard2_detected <= 1;
+                else if (debug_ex_pc == 32'h0000_0044 && debug_id_pc == 32'h0000_0048)
+                    stall_hazard3_detected <= 1;
+                else
+                    other_stalls_count <= other_stalls_count + 1;
+            end
+
+            // -----------------------------------------------------------------
+            // 2. Location-Specific Forwarding Detection
+            // -----------------------------------------------------------------
+            if (debug_ex_valid) begin
+                // At 0x2C (ADD x6, x5, x4): operand A (x5) forwarded from MEM/WB
+                if (debug_ex_pc == 32'h0000_002C && debug_forward_a == 2'b01)
+                    fwd_mem_wb_load_x5_verified <= 1;
+
+                // At 0x38 (SW x8, 12(x1)): operand B (x8 store data) forwarded from EX/MEM
+                if (debug_ex_pc == 32'h0000_0038 && debug_forward_b == 2'b10)
+                    fwd_ex_mem_store_x8_verified <= 1;
+
+                // At 0x3C (SUB x9, x8, x4): operand A (x8) forwarded from MEM/WB
+                if (debug_ex_pc == 32'h0000_003C && debug_forward_a == 2'b01)
+                    fwd_mem_wb_sub_x8_verified <= 1;
+            end
+
+            // -----------------------------------------------------------------
+            // 3. Branch Event Tracking
+            // -----------------------------------------------------------------
+            if (debug_ex_valid) begin
+                // BEQ at 0x4C (forward jump over trap)
+                if (debug_ex_pc == 32'h0000_004C) begin
+                    if (debug_branch_taken && debug_branch_target == 32'h0000_0054 && debug_flush)
+                        workload_branch_taken_count <= workload_branch_taken_count + 1;
+                end
+
+                // BEQ at 0x54 (completion self-loop)
+                if (debug_ex_pc == DONE_PC) begin
+                    if (debug_branch_taken && debug_flush)
+                        halt_loop_flush_count <= halt_loop_flush_count + 1;
+                end
+            end
+
+            // -----------------------------------------------------------------
+            // 4. Register x0 Read and WB Write-Suppression Invariant Checks
+            // -----------------------------------------------------------------
+            // Check WB interface invariant: an enabled write is never sent to x0 regardless of data
+            if (debug_wb_retired && debug_wb_reg_write && debug_wb_rd == 5'd0)
+                x0_write_violation <= 1;
+
+            if (debug_id_valid) begin
+                if (debug_id_instr[19:15] == 5'd0 && uut.u_id_stage.registers.rs1_data !== 32'd0)
+                    x0_read_violation <= 1;
+                if (debug_id_instr[24:20] == 5'd0 && uut.u_id_stage.registers.rs2_data !== 32'd0)
+                    x0_read_violation <= 1;
+            end
         end
     end
 
@@ -167,7 +258,9 @@ module tb_benchmark_load_store;
             end
         end
 
-        // Allow 2 additional cycles for complete pipeline quiescence
+        // Wait 2 additional cycles to ensure all preceding pipeline stages
+        // have completed write-back and memory commitments before sampling architectural state.
+        // Note: The CPU continues executing the halt self-loop at DONE_PC.
         repeat (2) @(posedge clk);
         #1;
 
@@ -284,31 +377,64 @@ module tb_benchmark_load_store;
         $display("  [%02d] Data Memory[word 20] (byte 0x50) = 65 (stored diff) PASS", test_count);
 
         // ---------------------------------------------------------------------
-        // Hazard & Pipeline Control Checks
+        // Location-Specific Hazard & Control Checks
         // ---------------------------------------------------------------------
-        // Check 18: Load-use hazard stall cycles (at least 2 stalls for the 2 hazards)
-        if (stall_cycles_detected < 2)
-            $fatal(1, "FAIL Check 18: Expected at least 2 load-use stall cycles, detected %0d", stall_cycles_detected);
+        // Check 18: Load-use hazard 1 (LW at 0x28 / ADD at 0x2C)
+        if (!stall_hazard1_detected)
+            $fatal(1, "FAIL Check 18: Load-use stall was NOT detected between LW at 0x28 and ADD at 0x2C");
         test_count = test_count + 1;
-        $display("  [%02d] Load-use interlock stall cycles = %0d (>= 2 expected) PASS", test_count, stall_cycles_detected);
+        $display("  [%02d] Load-use hazard 1 verified at LW 0x28 / ADD 0x2C PASS", test_count);
 
-        // Check 19: Branch flush detected (at least 1 for the taken branch at 0x4C)
-        if (flush_cycles_detected < 1)
-            $fatal(1, "FAIL Check 19: Expected branch flush for taken BEQ, detected %0d", flush_cycles_detected);
+        // Check 19: Load-use hazard 2 (LW at 0x30 / ADD at 0x34)
+        if (!stall_hazard2_detected)
+            $fatal(1, "FAIL Check 19: Load-use stall was NOT detected between LW at 0x30 and ADD at 0x34");
         test_count = test_count + 1;
-        $display("  [%02d] Branch flush detected = %0d (>= 1 expected) PASS", test_count, flush_cycles_detected);
+        $display("  [%02d] Load-use hazard 2 verified at LW 0x30 / ADD 0x34 PASS", test_count);
 
-        // Check 20: Register x0 hardwired zero guarantee
+        // Check 20: Load-use hazard 3 (LW at 0x44 / SUB at 0x48)
+        if (!stall_hazard3_detected)
+            $fatal(1, "FAIL Check 20: Load-use stall was NOT detected between LW at 0x44 and SUB at 0x48");
         test_count = test_count + 1;
-        $display("  [%02d] Register x0 hardwired zero guarantee PASS", test_count);
+        $display("  [%02d] Load-use hazard 3 verified at LW 0x44 / SUB 0x48 PASS", test_count);
+
+        // Check 21: No spurious/unrelated stalls occurred
+        if (other_stalls_count !== 0)
+            $fatal(1, "FAIL Check 21: Unexpected/spurious stall cycles detected: %0d", other_stalls_count);
+        test_count = test_count + 1;
+        $display("  [%02d] Spurious stall immunity verified (other stalls = 0) PASS", test_count);
+
+        // Check 22: Forwarding paths verified
+        if (!fwd_mem_wb_load_x5_verified)
+            $fatal(1, "FAIL Check 22: MEM->EX forwarding of loaded x5 was NOT detected at 0x2C");
+        if (!fwd_ex_mem_store_x8_verified)
+            $fatal(1, "FAIL Check 22: EX->EX forwarding of store data x8 was NOT detected at 0x38");
+        if (!fwd_mem_wb_sub_x8_verified)
+            $fatal(1, "FAIL Check 22: MEM->EX forwarding of computed x8 was NOT detected at 0x3C");
+        test_count = test_count + 1;
+        $display("  [%02d] Location-specific forwarding paths verified (at 0x2C, 0x38, 0x3C) PASS", test_count);
+
+        // Check 23: Workload branch verified (BEQ at 0x4C taken to 0x54)
+        if (workload_branch_taken_count !== 1)
+            $fatal(1, "FAIL Check 23: Expected exactly 1 taken BEQ branch at 0x4C, got %0d", workload_branch_taken_count);
+        test_count = test_count + 1;
+        $display("  [%02d] BEQ at 0x4C forward branch = 1 (target 0x54, trap skipped) PASS", test_count);
+
+        // Check 24: Register x0 WB write-suppression invariant and read-as-zero integrity
+        if (x0_write_violation)
+            $fatal(1, "FAIL Check 24: Enabled write to x0 (reg_write=1 for rd=x0) detected at WB interface!");
+        if (x0_read_violation)
+            $fatal(1, "FAIL Check 24: Non-zero read from x0 detected in ID stage!");
+        test_count = test_count + 1;
+        $display("  [%02d] Register x0 WB write-suppression invariant & read-as-zero PASS (directed register-file simulation test in tb_register_file)", test_count);
 
         $display("================================================================");
         $display("PASS: tb_benchmark_load_store (all %0d checks passed)", test_count);
         $display("Diagnostic Simulation Counters (not validated CPI/IPC):");
         $display("  Total Clock Cycles    : %0d", cycle_count);
         $display("  Retired Instructions  : %0d", retired_count);
-        $display("  Pipeline Stalls       : %0d", stall_cycles_detected);
-        $display("  Pipeline Flushes      : %0d", flush_cycles_detected);
+        $display("  Load-Use Stall Cycles : %0d (3 verified hazards)", total_stall_cycles);
+        $display("  Workload Branch Flushes: %0d (1 forward jump)", workload_branch_taken_count);
+        $display("  Halt Self-Loop Flushes : %0d", halt_loop_flush_count);
         $display("================================================================");
         $finish;
     end

@@ -10,14 +10,18 @@
 //   Executes programs/benchmark_accumulate.hex on the integrated 5-stage CPU.
 //   Verifies:
 //     1. Sequential and iterative arithmetic execution (ADDI, ADD, SUB).
-//     2. RAW data forwarding (EX->EX, MEM->EX) across tight loop iterations.
-//     3. Taken backward branches (BNE loop back, 4 iterations).
-//     4. Not-taken branch fall-through upon loop termination.
-//     5. Taken forward branch (BEQ over trap instruction).
-//     6. Wrong-path instruction squash (trap instruction never writes state).
-//     7. Clean completion detection at halt self-loop (0x30).
-//     8. Comprehensive architectural state validation (registers x1-x31).
-//     9. Bounded cycle timeout protection against hang/infinite loop.
+//     2. Dynamic verification of RAW forwarding selections at consumer PCs:
+//        - EX->EX forwarding (FWD_EX_MEM = 2'b10) for x1 at 0x14 (ADD).
+//        - MEM->EX forwarding (FWD_MEM_WB = 2'b01) for x1 at 0x18 (SUB).
+//     3. Branch evaluation tied to specific instruction PCs:
+//        - BNE at 0x1C taken exactly 4 times with target 0x10 and flush asserted.
+//        - BNE at 0x1C not taken exactly 1 time on loop termination with flush deasserted.
+//        - BEQ at 0x28 taken exactly 1 time with target 0x30 and flush asserted.
+//        - Completion self-loop flushes isolated and accounted separately.
+//     4. Wrong-path instruction squash (trap at 0x2C never writes state; x7 remains 0).
+//     5. Architectural register file state verification (x1-x6, x7).
+//     6. Register x0 read-zero and WB write-suppression invariant runtime checks.
+//     7. Bounded cycle timeout protection against hang/infinite loop.
 // =============================================================================
 
 `timescale 1ns/1ps
@@ -99,24 +103,97 @@ module tb_benchmark_accumulate;
     // Clock generator (10ns period -> 100 MHz)
     always #5 clk = ~clk;
 
-    // Simulation metrics & tracking
+    // Simulation metrics & event tracking
     integer cycle_count = 0;
     integer retired_count = 0;
     integer stall_cycles_detected = 0;
-    integer flush_cycles_detected = 0;
+    integer total_flush_cycles = 0;
     integer test_count = 0;
     reg program_completed = 0;
 
-    // Cycle Monitor
+    // PC-specific branch tracking
+    integer loop_branch_taken_count = 0;     // BNE at 0x1C taken (target 0x10)
+    integer loop_branch_not_taken_count = 0; // BNE at 0x1C not taken (fall-through)
+    integer forward_branch_taken_count = 0;  // BEQ at 0x28 taken (target 0x30)
+    integer halt_loop_flush_count = 0;       // BEQ at 0x30 completion self-loop
+
+    // Specific forwarding path flags
+    reg fwd_ex_mem_verified = 0; // Verified debug_forward_b == 2'b10 at 0x14
+    reg fwd_mem_wb_verified = 0; // Verified debug_forward_b == 2'b01 at 0x18
+
+    // x0 runtime check flags
+    reg x0_write_violation = 0;
+    reg x0_read_violation  = 0;
+
+    // Cycle Monitor and Event Logger
     always @(posedge clk) begin
         if (!rst) begin
             cycle_count <= cycle_count + 1;
+
             if (debug_wb_retired)
                 retired_count <= retired_count + 1;
+
             if (debug_stall)
                 stall_cycles_detected <= stall_cycles_detected + 1;
+
             if (debug_flush)
-                flush_cycles_detected <= flush_cycles_detected + 1;
+                total_flush_cycles <= total_flush_cycles + 1;
+
+            // -----------------------------------------------------------------
+            // 1. PC-Specific Branch Event Tracking
+            // -----------------------------------------------------------------
+            if (debug_ex_valid) begin
+                // BNE at 0x1C (loop back)
+                if (debug_ex_pc == 32'h0000_001C) begin
+                    if (debug_branch_taken) begin
+                        if (debug_branch_target == 32'h0000_0010 && debug_flush)
+                            loop_branch_taken_count <= loop_branch_taken_count + 1;
+                    end else begin
+                        if (!debug_flush)
+                            loop_branch_not_taken_count <= loop_branch_not_taken_count + 1;
+                    end
+                end
+
+                // BEQ at 0x28 (forward jump over trap)
+                if (debug_ex_pc == 32'h0000_0028) begin
+                    if (debug_branch_taken && debug_branch_target == 32'h0000_0030 && debug_flush)
+                        forward_branch_taken_count <= forward_branch_taken_count + 1;
+                end
+
+                // BEQ at 0x30 (completion self-loop)
+                if (debug_ex_pc == DONE_PC) begin
+                    if (debug_branch_taken && debug_flush)
+                        halt_loop_flush_count <= halt_loop_flush_count + 1;
+                end
+            end
+
+            // -----------------------------------------------------------------
+            // 2. Specific Forwarding Path Verification
+            // -----------------------------------------------------------------
+            if (debug_ex_valid) begin
+                // At 0x14 (ADD x3, x3, x1): operand B (x1) must forward from EX/MEM (0x10 ADDI)
+                if (debug_ex_pc == 32'h0000_0014 && debug_forward_b == 2'b10)
+                    fwd_ex_mem_verified <= 1;
+
+                // At 0x18 (SUB x4, x4, x1): operand B (x1) must forward from MEM/WB (0x10 ADDI)
+                if (debug_ex_pc == 32'h0000_0018 && debug_forward_b == 2'b01)
+                    fwd_mem_wb_verified <= 1;
+            end
+
+            // -----------------------------------------------------------------
+            // 3. Register x0 Read and WB Write-Suppression Invariant Checks
+            // -----------------------------------------------------------------
+            // Check WB interface invariant: an enabled write is never sent to x0 regardless of data
+            if (debug_wb_retired && debug_wb_reg_write && debug_wb_rd == 5'd0)
+                x0_write_violation <= 1;
+
+            // Check combinational register-file read ports in ID stage when accessing x0
+            if (debug_id_valid) begin
+                if (debug_id_instr[19:15] == 5'd0 && uut.u_id_stage.registers.rs1_data !== 32'd0)
+                    x0_read_violation <= 1;
+                if (debug_id_instr[24:20] == 5'd0 && uut.u_id_stage.registers.rs2_data !== 32'd0)
+                    x0_read_violation <= 1;
+            end
         end
     end
 
@@ -163,7 +240,9 @@ module tb_benchmark_accumulate;
             end
         end
 
-        // Allow 2 additional cycles for complete pipeline quiescence
+        // Wait 2 additional cycles to ensure all preceding pipeline stages
+        // have completed write-back commitments before sampling architectural state.
+        // Note: The CPU continues executing the halt self-loop at DONE_PC.
         repeat (2) @(posedge clk);
         #1;
 
@@ -213,25 +292,47 @@ module tb_benchmark_accumulate;
         test_count = test_count + 1;
         $display("  [%02d] Register x7 = 0 (wrong-path trap instruction 0x2C squashed) PASS", test_count);
 
-        // Check 8: Branch flushes detected (4 taken loop iterations + 1 forward jump)
-        if (flush_cycles_detected < 5)
-            $fatal(1, "FAIL Check 8: Expected at least 5 branch flushes, detected %0d", flush_cycles_detected);
+        // Check 8: BNE at 0x1C taken branches (exactly 4 taken loop iterations)
+        if (loop_branch_taken_count !== 4)
+            $fatal(1, "FAIL Check 8: Expected exactly 4 taken BNE loop branches at 0x1C, got %0d", loop_branch_taken_count);
         test_count = test_count + 1;
-        $display("  [%02d] Branch flushes detected = %0d (>= 5 expected) PASS", test_count, flush_cycles_detected);
+        $display("  [%02d] BNE at 0x1C taken branches = 4 (target 0x10, flush asserted) PASS", test_count);
 
-        // Check 9: Register x0 hardwired zero guarantee
-        if (uut.u_id_stage.registers.rs1_data !== 32'd0) begin
-            // Double check by reading register 0 through the read port
-        end
+        // Check 9: BNE at 0x1C not-taken branch (exactly 1 loop exit fall-through)
+        if (loop_branch_not_taken_count !== 1)
+            $fatal(1, "FAIL Check 9: Expected exactly 1 not-taken BNE branch at 0x1C, got %0d", loop_branch_not_taken_count);
         test_count = test_count + 1;
-        $display("  [%02d] Register x0 hardwired zero guarantee PASS", test_count);
+        $display("  [%02d] BNE at 0x1C not-taken branch = 1 (fall-through without flush) PASS", test_count);
+
+        // Check 10: BEQ at 0x28 taken forward branch (skipping trap)
+        if (forward_branch_taken_count !== 1)
+            $fatal(1, "FAIL Check 10: Expected exactly 1 forward BEQ taken branch at 0x28, got %0d", forward_branch_taken_count);
+        test_count = test_count + 1;
+        $display("  [%02d] BEQ at 0x28 forward branch = 1 (target 0x30, trap skipped) PASS", test_count);
+
+        // Check 11: Specific RAW Forwarding Paths Verified
+        if (!fwd_ex_mem_verified)
+            $fatal(1, "FAIL Check 11: EX->EX forwarding (debug_forward_b=2'b10) was not detected at 0x14");
+        if (!fwd_mem_wb_verified)
+            $fatal(1, "FAIL Check 11: MEM->EX forwarding (debug_forward_b=2'b01) was not detected at 0x18");
+        test_count = test_count + 1;
+        $display("  [%02d] Specific RAW forwarding paths verified (EX->EX at 0x14, MEM->EX at 0x18) PASS", test_count);
+
+        // Check 12: Register x0 WB write-suppression invariant and read-as-zero integrity
+        if (x0_write_violation)
+            $fatal(1, "FAIL Check 12: Enabled write to x0 (reg_write=1 for rd=x0) detected at WB interface!");
+        if (x0_read_violation)
+            $fatal(1, "FAIL Check 12: Non-zero read from x0 detected in ID stage!");
+        test_count = test_count + 1;
+        $display("  [%02d] Register x0 WB write-suppression invariant & read-as-zero PASS (directed register-file simulation test in tb_register_file)", test_count);
 
         $display("================================================================");
         $display("PASS: tb_benchmark_accumulate (all %0d checks passed)", test_count);
         $display("Diagnostic Simulation Counters (not validated CPI/IPC):");
         $display("  Total Clock Cycles    : %0d", cycle_count);
         $display("  Retired Instructions  : %0d", retired_count);
-        $display("  Pipeline Flushes      : %0d", flush_cycles_detected);
+        $display("  Workload Branch Flushes: %0d (4 loop + 1 forward)", loop_branch_taken_count + forward_branch_taken_count);
+        $display("  Halt Self-Loop Flushes : %0d", halt_loop_flush_count);
         $display("  Pipeline Stalls       : %0d", stall_cycles_detected);
         $display("================================================================");
         $finish;

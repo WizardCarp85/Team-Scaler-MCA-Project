@@ -70,22 +70,27 @@ Benchmark 1 implements an iterative summation loop and running difference accumu
 - `x5 = 15` (copied from `x3` on fall-through)
 - `x6 = 85` (copied from `x4` on fall-through)
 - `x7 = 0` (squashed trap verification)
-- `x0 = 0` (hardwired zero)
+- `x0 = 0` (verified during execution: WB write-suppression invariant and ID read-as-zero; write-to-x0 rejection is verified by the directed register-file simulation test in `tb_register_file.v`)
 
 ### 3.6 Observed Execution Metrics & Diagnostic Counters
 - **Total Clock Cycles:** 43 cycles
 - **Retired Instructions:** 28 instructions
-- **Pipeline Flushes:** 7 flushes (4 loop iterations + 1 forward jump + 2 at halt self-loop)
+- **Workload Branch Flushes:** 5 flushes (4 taken loop iterations + 1 forward jump)
+- **Halt Self-Loop Flushes:** 2 flushes (from in-place execution of `beq x0, x0, 0` at `0x30`)
+- **Total Pipeline Flushes Detected:** 7 flushes
 - **Pipeline Stalls:** 0 stalls (pure ALU/branch pipeline)
 
 #### Counter Measurement Window & Accounting Details
 - **Start Condition:** Counters activate on the first rising clock edge following synchronous active-high reset deassertion (`!rst`).
-- **Stop Condition:** Program completion is detected at cycle 41 when the halt self-loop (`0x30: beq x0, x0, 0`) retires at Write-Back (`debug_wb_retired && debug_wb_pc == 32'h0000_0030`). The testbench executes 2 additional clock cycles to verify complete pipeline quiescence before calling `$finish` at cycle 43.
+- **Stop Condition:** Program completion is detected at cycle 41 when the halt self-loop (`0x30: beq x0, x0, 0`) retires at Write-Back (`debug_wb_retired && debug_wb_pc == 32'h0000_0030`). The testbench executes 2 additional clock cycles before asserting final state checks and calling `$finish` at cycle 43.
+- **Architectural State Sampling Timing:**
+  - Because instructions execute in strict in-order sequence, when the first retirement of `0x30` occurs at WB, all earlier workload instructions have completed and committed their results.
+  - The CPU does not freeze clocking on completion; the halt instruction `beq x0, x0, 0` continues executing harmlessly in-place. Because it has `rd=0`, `reg_write=0`, and `mem_write=0`, it produces no register or memory side effects, ensuring the architectural state remains stable and immutable.
 - **Halt Self-Loop Contribution:**
-  - The halt instruction (`beq x0, x0, 0`) evaluates as taken in the Execute stage, redirecting IF and generating pipeline flush events. This contributes 2 additional flush events to `flush_cycles_detected` (bringing the total from 5 to 7).
+  - The halt instruction (`beq x0, x0, 0`) evaluates as taken in the Execute stage, redirecting IF and generating 2 additional pipeline flush events.
   - Its initial retirement at WB increments `retired_count` from 27 (algorithmic instructions) to 28.
-  - The 2 quiescence cycles increment `cycle_count` from 41 to 43.
-- **Important Note on Performance Metrics:** These values are diagnostic simulation counters used solely to verify program progression, quiescence, and deterministic test completion. They do **not** represent validated CPI/IPC benchmark figures.
+  - The 2 settling cycles increment `cycle_count` from 41 to 43.
+- **Important Note on Performance Metrics:** These values are diagnostic simulation counters used solely to verify program progression and deterministic test completion. They do **not** represent validated CPI/IPC benchmark figures.
 
 ### 3.7 Simulation Command & Waveform Inspection
 ```bash
@@ -119,7 +124,7 @@ iverilog -g2012 -o simulation/tb_benchmark_accumulate.vvp \
     rtl/stages/branch_controller.v
 vvp simulation/tb_benchmark_accumulate.vvp
 ```
-Expected output: `PASS: tb_benchmark_accumulate (all 9 checks passed)`.
+Expected output: `PASS: tb_benchmark_accumulate (all 12 checks passed)`.
 
 #### Waveform Inspection
 The testbench generates a Value Change Dump (VCD) at `simulation/tb_benchmark_accumulate.vcd`. To view in GTKWave:
@@ -131,7 +136,9 @@ Key signals to observe:
 - Branch & Flush: `debug_branch_taken`, `debug_branch_target`, `debug_flush`
 - Forwarding Controls: `debug_forward_a`, `debug_forward_b`
 - Write-Back Commit: `debug_wb_retired`, `debug_wb_reg_write`, `debug_wb_rd`, `debug_wb_data`
-- Architectural Registers: `uut.u_id_stage.registers.registers[1:31]`
+- Register File Read Ports: `uut.u_id_stage.registers.rs1_data`, `uut.u_id_stage.registers.rs2_data`
+
+*(Note on 2D Arrays: In standard Icarus Verilog VCD generation, internal 2D unpacked arrays such as `registers[1:31]` are not dumped as separate array variables. Register updates are observed via the Write-Back interface signals `debug_wb_rd` and `debug_wb_data` on each clock edge).*
 
 ---
 
@@ -195,6 +202,7 @@ Benchmark 2 tests memory operations (`SW`, `LW`), base-pointer arithmetic, load-
   - `x10 = 75` (store-to-load readback of sum)
   - `x11 = 0` ($75 - 75 = 0$)
   - `x12 = 0` (squashed trap verification)
+  - `x0 = 0` (verified during execution: WB write-suppression invariant and ID read-as-zero; write-to-x0 rejection is verified by the directed register-file simulation test in `tb_register_file.v`)
 - **Data Memory:**
   - `mem[16]` (byte `0x40`) = 10
   - `mem[17]` (byte `0x44`) = 25
@@ -205,17 +213,22 @@ Benchmark 2 tests memory operations (`SW`, `LW`), base-pointer arithmetic, load-
 ### 4.6 Observed Execution Metrics & Diagnostic Counters
 - **Total Clock Cycles:** 31 cycles
 - **Retired Instructions:** 21 instructions
-- **Pipeline Stalls:** 3 stall cycles (3 load-use hazard interlocks)
-- **Pipeline Flushes:** 3 flushes (1 taken forward branch + 2 at halt self-loop)
+- **Load-Use Stall Cycles:** 3 stall cycles (exactly 3 location-verified load-use hazards, 0 spurious stalls)
+- **Workload Branch Flushes:** 1 flush (forward jump at 0x4C)
+- **Halt Self-Loop Flushes:** 2 flushes (from in-place execution of `beq x0, x0, 0` at `0x54`)
+- **Total Pipeline Flushes Detected:** 3 flushes
 
 #### Counter Measurement Window & Accounting Details
 - **Start Condition:** Counters activate on the first rising clock edge following synchronous active-high reset deassertion (`!rst`).
-- **Stop Condition:** Program completion is detected at cycle 29 when the halt self-loop (`0x54: beq x0, x0, 0`) retires at Write-Back (`debug_wb_retired && debug_wb_pc == 32'h0000_0054`). The testbench executes 2 additional clock cycles to verify complete pipeline quiescence before calling `$finish` at cycle 31.
+- **Stop Condition:** Program completion is detected at cycle 29 when the halt self-loop (`0x54: beq x0, x0, 0`) retires at Write-Back (`debug_wb_retired && debug_wb_pc == 32'h0000_0054`). The testbench executes 2 additional clock cycles before asserting final state checks and calling `$finish` at cycle 31.
+- **Architectural State Sampling Timing:**
+  - Because instructions execute in strict in-order sequence, when the first retirement of `0x54` occurs at WB, all earlier workload stores and register writes have completed and committed.
+  - The CPU does not freeze clocking on completion; the halt instruction `beq x0, x0, 0` continues executing harmlessly in-place. Because it has `rd=0`, `reg_write=0`, and `mem_write=0`, it produces no register or memory side effects, ensuring the architectural state remains stable and immutable.
 - **Halt Self-Loop Contribution:**
   - The halt instruction (`beq x0, x0, 0`) evaluates as taken in the Execute stage, asserting 2 additional pipeline flush cycles (bringing total flushes from 1 to 3).
   - Its initial retirement at WB increments `retired_count` from 20 (algorithmic instructions) to 21.
-  - The 2 quiescence cycles increment `cycle_count` from 29 to 31.
-- **Important Note on Performance Metrics:** These values are diagnostic simulation counters used solely to verify program progression, quiescence, and deterministic test completion. They do **not** represent validated CPI/IPC benchmark figures.
+  - The 2 settling cycles increment `cycle_count` from 29 to 31.
+- **Important Note on Performance Metrics:** These values are diagnostic simulation counters used solely to verify program progression and deterministic test completion. They do **not** represent validated CPI/IPC benchmark figures.
 
 ### 4.7 Simulation Command & Waveform Inspection
 ```bash
@@ -249,7 +262,7 @@ iverilog -g2012 -o simulation/tb_benchmark_load_store.vvp \
     rtl/stages/branch_controller.v
 vvp simulation/tb_benchmark_load_store.vvp
 ```
-Expected output: `PASS: tb_benchmark_load_store (all 20 checks passed)`.
+Expected output: `PASS: tb_benchmark_load_store (all 24 checks passed)`.
 
 #### Waveform Inspection
 The testbench generates a Value Change Dump (VCD) at `simulation/tb_benchmark_load_store.vcd`. To view in GTKWave:
@@ -258,11 +271,12 @@ gtkwave simulation/tb_benchmark_load_store.vcd
 ```
 Key signals to observe:
 - Stage PCs: `debug_if_pc`, `debug_id_pc`, `debug_ex_pc`, `debug_mem_pc`, `debug_wb_pc`
-- Hazard Interlock: `debug_stall` (asserted for 1 cycle during each load-use condition)
+- Hazard Interlock: `debug_stall` (asserted for 1 cycle during each of the 3 load-use hazards)
 - Forwarding Controls: `debug_forward_a`, `debug_forward_b`
 - Memory Controls: `debug_mem_read`, `debug_mem_write`, `debug_mem_addr`, `debug_mem_write_data`
 - Write-Back Commit: `debug_wb_retired`, `debug_wb_reg_write`, `debug_wb_rd`, `debug_wb_data`
-- Architectural Storage: `uut.u_id_stage.registers.registers[1:31]`, `uut.u_mem_stage.u_data_mem.mem[16:20]`
+
+*(Note on 2D Arrays: In standard Icarus Verilog VCD generation, internal 2D unpacked memory arrays such as `mem[0:255]` and `registers[1:31]` are not dumped as separate array variables. Memory writes and reads are observed via the MEM stage bus signals `debug_mem_addr`, `debug_mem_write_data`, and the WB stage signals).*
 
 ---
 
