@@ -8,6 +8,7 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{tabularx}
+\usepackage{placeins}
 \usepackage{url}
 \usepackage{hyperref}
 
@@ -230,7 +231,7 @@ A synthesizable Verilog single-cycle reference processor (\texttt{rtl/reference/
 \small
 \begin{tabularx}{\textwidth}{@{}llcccccX@{}}
 \toprule
-\textbf{Workload} & \textbf{Architecture} & \textbf{Cycles} & \textbf{Instr.} & \textbf{CPI} & \textbf{IPC} & \textbf{Dynamic Trace (PC \& Word)} & \textbf{Selected Architectural State Matching} \\
+\textbf{Workload} & \textbf{Architecture} & \textbf{Cycles} & \textbf{Instr.} & \textbf{CPI} & \textbf{IPC} & \textbf{Trace} & \textbf{Selected State} \\
 \midrule
 \textbf{Microtest 1} (ADDI) & Single-Cycle Baseline & 1  & 1  & 1.0000 & 1.0000 & 2/2 matched   & Matched ($x1 = 42$) \\
                             & 5-Stage Pipelined CPU & 5  & 1  & 5.0000 & 0.2000 & 2/2 matched   & Matched ($x1 = 42$) \\
@@ -291,7 +292,7 @@ The project followed an issue-driven GitHub workflow using feature branches and 
 \footnotesize
 \begin{tabularx}{\columnwidth}{@{}lX@{}}
 \toprule
-\textbf{Member (GitHub)} & \textbf{Milestone \& Technical Contributions} \\
+\textbf{Member} & \textbf{Milestone \& Technical Contributions} \\
 \midrule
 \textbf{Y.~Nimje} & \textbf{M5 (Hazard \& Top Integration):} Repository scaffold, contribution workflow (\texttt{CONTRIBUTING.md}), PR templates; implemented hazard detection unit (\texttt{hazard\_detection.v}), forwarding unit (\texttt{forwarding\_unit.v}), branch coordinator (\texttt{branch\_controller.v}), and top-level CPU integration (\texttt{cpu.v}, \texttt{top.v}). \\
 \addlinespace
@@ -308,6 +309,7 @@ The project followed an issue-driven GitHub workflow using feature branches and 
 \raggedright \scriptsize \textit{Note: Individual contribution descriptions reflect assigned project milestones from the repository issue tracker and are flagged for final confirmation by all team members.}
 \end{table}
 
+\FloatBarrier
 \section{Conclusion}
 This project successfully designed, implemented, and verified a five-stage pipelined RV32I processor in Verilog HDL. Full-pipeline integration incorporates operand forwarding, single-cycle load-use stalls, and branch redirection with dual-stage flushing. End-to-end verification across self-checking benchmarks confirmed that all compared architectural state matched against a Verilog single-cycle baseline reference, with measured workload CPI values ranging from 1.3500 to 1.5625. Full-CPU waveform evidence was generated and verified directly from simulation VCD traces. Future extensions include implementing dynamic branch prediction, cache memory interfaces, and the broader RV32I integer instruction set.
 
