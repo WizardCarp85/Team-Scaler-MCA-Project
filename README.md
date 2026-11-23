@@ -22,11 +22,11 @@ This project implements a classic 5-stage RISC-V pipeline (**IF**, **ID**, **EX*
 
 ## 2. Project Status & Work Done So Far
 
-The repository has progressed through the first three major architectural milestones (Scaffold, IF stage, ID stage, EX stage), fully implemented and validated with comprehensive unit and integration testbenches:
+All primary development milestones (**M1–M5**) and **Milestone 6** (End-to-End Verification & Performance Analysis) are completed and merged into `main`. The five-stage in-order pipelined RV32I processor is complete with full hazard handling (EX-stage operand forwarding, load-use stall interlocks, and branch misprediction flushes). The implementation is verified through self-checking unit testbenches, full-CPU benchmark programs, cycle-accurate CPI/IPC measurements, and co-simulation matching against a Verilog single-cycle reference processor:
 
 ```
-[ Milestone 1: IF Stage ] ──► [ Milestone 2: ID Stage ] ──► [ Milestone 3: EX Stage ] ──► [ M4: MEM/WB ] ──► [ M5: CPU Integration ]
-        (Completed)                   (Completed)                   (Completed)              (Completed)             (Completed)
+[ M1: IF Stage ] ──► [ M2: ID Stage ] ──► [ M3: EX Stage ] ──► [ M4: MEM/WB ] ──► [ M5: CPU Integration ] ──► [ M6: Verification & Analysis ]
+   (Completed)           (Completed)           (Completed)         (Completed)             (Completed)                        (Completed)
 ```
 
 ### Milestone Progress Tracker
@@ -89,7 +89,8 @@ The repository has progressed through the first three major architectural milest
     - Comprehensive observability with exposed debug ports for stage PCs, instruction words, validity bits, register writes, memory transactions, and hazard metrics.
     - Self-checking integration test suite (`tb_cpu.v`, `tb_top.v`) executing arithmetic, memory, hazard interlocks, and branch redirection sequences in program order.
     - Complete architectural specification contract in [`docs/top_level_cpu_interface.md`](docs/top_level_cpu_interface.md).
-- [ ] **Milestone 6: End-to-End Verification & Performance Analysis (Related to #27 — Work Completed on Branch, PR Pending)**
+- [x] **Milestone 6: End-to-End Verification & Performance Analysis (Issue #27, PRs #65 & #66 — Completed & Merged)**
+  - RTL end-to-end verification and performance analysis merged; FPGA synthesis metrics and GTKWave GUI screenshots remain pending toolchain execution.
   - Comprehensive assembly verification suite covering loops, memory access sequences, and control hazards ([`programs/README.md`](programs/README.md)).
   - Diagnostic microtests: 1-instruction fill/drain (`microtest_one_instr.hex`) and 4-instruction load-use interlock (`microtest_load_use.hex`).
   - Benchmark 1: Arithmetic & Accumulator Loop (`benchmark_accumulate.hex`, `tb_benchmark_accumulate.v`).
@@ -98,7 +99,8 @@ The repository has progressed through the first three major architectural milest
   - Rigorous CPI/IPC measurement harness with mathematically defined measurement windows (`tb_performance_cpi_ipc.v`).
   - Synthesizable Verilog single-cycle reference processor (`rtl/reference/single_cycle_cpu.v`) and automated dual-core co-simulation comparison testbench (`tb_single_cycle_comparison.v`).
   - Full-CPU waveform timing documentation for load-use stalls and branch flushes ([`docs/waveform_evidence.md`](docs/waveform_evidence.md)).
-  - Synthesis scripts and timing constraints for Xilinx Vivado and Yosys ([`synthesis/README.md`](synthesis/README.md)) *(unverified locally; generic cell mapping verified independently on Yosys 0.52; FPGA utilization, $F_{\max}$, and GTKWave screenshot captures pending toolchain execution)*.
+  - IEEE conference report source and compiled PDF ([`reports/main.tex`](reports/main.tex), [`reports/MCA Report.pdf`](reports/MCA%20Report.pdf)).
+  - Synthesis scripts and timing constraints for Xilinx Vivado and Yosys ([`synthesis/README.md`](synthesis/README.md)) *(scripts and constraints provided; generic cell mapping verified independently on Yosys 0.52; hardware FPGA utilization, $F_{\max}$, and GTKWave GUI screenshots remain pending EDA/toolchain execution)*.
 
 ---
 
@@ -186,10 +188,15 @@ Team-Scaler-MCA-Project/
 ├── programs/
 │   ├── README.md                    # Hex test image & benchmark suite documentation
 │   ├── if_test.hex                  # Instruction image for fetch testing
+│   ├── microtest_one_instr.hex      # Microtest 1: Single instruction (ADDI)
+│   ├── microtest_load_use.hex       # Microtest 2: Load-use hazard interlock
 │   ├── benchmark_accumulate.hex     # Benchmark 1: Arithmetic & accumulator loop
 │   ├── benchmark_load_store.hex     # Benchmark 2: Memory & array access sequence
 │   └── benchmark_control_hazards.hex# Benchmark 3: Control hazards & dual forwarding sequence
-├── reports/                         # Final IEEE report (main.tex), figures, and performance data
+├── reports/                         # IEEE conference report, figures, and performance data
+│   ├── MCA Report.pdf               # Compiled IEEE conference report PDF
+│   ├── main.tex                     # LaTeX report source
+│   └── figures/                     # Pipeline architecture diagram and schematics
 ├── rtl/
 │   ├── cpu.v                        # Top-level pipelined CPU module
 │   ├── top.v                        # Top-level wrapper / alias
