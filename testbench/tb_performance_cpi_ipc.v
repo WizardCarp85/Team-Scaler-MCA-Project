@@ -280,6 +280,12 @@ module tb_performance_cpi_ipc;
         //   - Stall Cycles        : exactly 0
         //   - Workload Flushes    : exactly 0 (Halt flush in EX at cycle 4 is NOT attributed to workload)
         //   - Measured CPI        : exactly 5.0000
+        // Expected Completion-Inclusive Window (Conv. B):
+        //   - Retired Instructions: exactly 2 (ADDI + first retirement of BEQ)
+        //   - Elapsed Clock Cycles: exactly 6 (BEQ reaches WB write edge at cycle 6)
+        //   - Stall Cycles        : exactly 0
+        //   - Total Flushes       : exactly 1 (Halt BEQ taken flush in EX at cycle 4)
+        //   - Measured CPI        : 6 / 2 = 3.0000
         // =====================================================================
         run_benchmark(
             "Microtest 1: Single Instruction (ADDI)",
@@ -287,10 +293,12 @@ module tb_performance_cpi_ipc;
             32'h0000_0004,
             32'h0000_0000
         );
-        if (win_a_cycles !== 5 || win_a_retired !== 1)
-            $fatal(1, "FAIL Microtest 1 expected counts (expected cycles=5, retired=1, got cycles=%0d, retired=%0d)", win_a_cycles, win_a_retired);
+        if (win_a_cycles !== 5 || win_a_retired !== 1 || win_a_stalls !== 0)
+            $fatal(1, "FAIL Microtest 1 expected Conv A counts (expected cycles=5, retired=1, stalls=0, got cycles=%0d, retired=%0d, stalls=%0d)", win_a_cycles, win_a_retired, win_a_stalls);
         if (win_a_flushes !== 0)
             $fatal(1, "FAIL Microtest 1 misattributed completion marker flush to workload (got %0d)", win_a_flushes);
+        if (win_b_cycles !== 6 || win_b_retired !== 2 || win_b_stalls !== 0 || win_b_flushes !== 1)
+            $fatal(1, "FAIL Microtest 1 expected Conv B counts (expected cycles=6, retired=2, stalls=0, flushes=1, got cycles=%0d, retired=%0d, stalls=%0d, flushes=%0d)", win_b_cycles, win_b_retired, win_b_stalls, win_b_flushes);
         if (uut.u_id_stage.registers.registers[1] !== 32'd42)
             $fatal(1, "FAIL Microtest 1 architectural state x1 !== 42");
 
@@ -307,6 +315,12 @@ module tb_performance_cpi_ipc;
         //   - Stall Cycles        : exactly 1
         //   - Workload Flushes    : exactly 0
         //   - Measured CPI        : 9 / 4 = 2.2500
+        // Expected Completion-Inclusive Window (Conv. B):
+        //   - Retired Instructions: exactly 5 (4 workload + first retirement of BEQ)
+        //   - Elapsed Clock Cycles: exactly 10 (BEQ reaches WB write edge at cycle 10)
+        //   - Stall Cycles        : exactly 1
+        //   - Total Flushes       : exactly 1 (Halt BEQ taken flush in EX at cycle 8)
+        //   - Measured CPI        : 10 / 5 = 2.0000
         // =====================================================================
         run_benchmark(
             "Microtest 2: Load-Use Hazard Interlock",
@@ -315,9 +329,11 @@ module tb_performance_cpi_ipc;
             32'h0000_000C
         );
         if (win_a_cycles !== 9 || win_a_retired !== 4 || win_a_stalls !== 1)
-            $fatal(1, "FAIL Microtest 2 expected counts (expected cycles=9, retired=4, stalls=1, got cycles=%0d, retired=%0d, stalls=%0d)", win_a_cycles, win_a_retired, win_a_stalls);
+            $fatal(1, "FAIL Microtest 2 expected Conv A counts (expected cycles=9, retired=4, stalls=1, got cycles=%0d, retired=%0d, stalls=%0d)", win_a_cycles, win_a_retired, win_a_stalls);
         if (win_a_flushes !== 0)
             $fatal(1, "FAIL Microtest 2 misattributed completion marker flush to workload (got %0d)", win_a_flushes);
+        if (win_b_cycles !== 10 || win_b_retired !== 5 || win_b_stalls !== 1 || win_b_flushes !== 1)
+            $fatal(1, "FAIL Microtest 2 expected Conv B counts (expected cycles=10, retired=5, stalls=1, flushes=1, got cycles=%0d, retired=%0d, stalls=%0d, flushes=%0d)", win_b_cycles, win_b_retired, win_b_stalls, win_b_flushes);
         if (uut.u_id_stage.registers.registers[3] !== 32'd20)
             $fatal(1, "FAIL Microtest 2 architectural state x3 !== 20");
 

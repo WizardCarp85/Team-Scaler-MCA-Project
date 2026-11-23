@@ -14,13 +14,19 @@
 //      Captures the ordered dynamic retirement sequence of Program Counter (PC)
 //      values and the corresponding instruction-memory words associated with those PCs
 //      for both processors, verifying that every executed instruction step matches
-//      in strict architectural program order.
+//      in strict architectural program order. Note: the pipelined core records the
+//      instruction word from instruction memory indexed by the retiring PC at WB;
+//      it does not directly observe an instruction bus at WB.
 //   2. Workload & Completion Window Bounds:
 //      Enforces strict timeout and missing-endpoint failure checks ($fatal) if
 //      either processor fails to reach the workload endpoint or completion marker.
 //   3. Direct Architectural State Comparison:
-//      Compares final general-purpose register values (x1-x31) and data memory words
-//      directly between the two cores, as well as against independent golden values.
+//      Compares final architectural state—specifically selected workload-modified
+//      registers (e.g. x1 for Microtest 1; x1-x3 and mem[0] for Microtest 2;
+//      x1-x7 for Benchmark 1; x1-x12 and mem[16:20] for Benchmark 2; x1-x17 and
+//      mem[0] for Benchmark 3)—directly between the two cores, as well as against
+//      independent golden values (does not claim exhaustive comparison of all 31
+//      registers across all tests).
 //   4. Baseline Performance Measurement:
 //      Demonstrates empirical single-cycle baseline (CPI = 1.000) versus
 //      pipelined cycle count and throughput overheads, using consistent
@@ -319,7 +325,7 @@ module tb_single_cycle_comparison;
                      pipe_workload_cycles, pipe_workload_retired,
                      pipe_workload_cycles * 1.0 / pipe_workload_retired,
                      pipe_workload_retired * 1.0 / pipe_workload_cycles);
-            $display("  Dynamic Retirement Trace : %0d / %0d instructions MATCHED EXACTLY in sequence",
+            $display("  Dynamic Retirement Trace : %0d / %0d retired steps matched in sequence (ordered retired PCs and instruction-memory words; WB instruction word not directly observed)",
                      sc_retired_count, pipe_retired_count);
             $display("----------------------------------------------------------------");
         end
@@ -349,7 +355,7 @@ module tb_single_cycle_comparison;
         if (sc_dut.registers[1] !== 32'd42)
             $fatal(1, "Microtest 1 golden mismatch x1");
         test_count = test_count + 1;
-        $display("  [%02d] Microtest 1: Core-to-Core & Golden Architectural State Check (x1=42): MATCH PASS", test_count);
+        $display("  [%02d] Microtest 1: Core-to-Core & Golden State Check (selected x1=42): MATCH PASS", test_count);
         $display("");
 
         // =====================================================================
@@ -368,7 +374,7 @@ module tb_single_cycle_comparison;
         if (sc_dut.registers[3] !== 32'd20) $fatal(1, "Microtest 2 golden mismatch x3");
         if (sc_dut.dmem[0]      !== 32'd10) $fatal(1, "Microtest 2 golden mismatch dmem[0]");
         test_count = test_count + 1;
-        $display("  [%02d] Microtest 2: Core-to-Core & Golden Architectural State Check (x1,x2,x3,mem[0]): MATCH PASS", test_count);
+        $display("  [%02d] Microtest 2: Core-to-Core & Golden State Check (selected x1,x2,x3,mem[0]): MATCH PASS", test_count);
         $display("");
 
         // =====================================================================
@@ -399,7 +405,7 @@ module tb_single_cycle_comparison;
         if (sc_dut.registers[6] !== 32'd85) $fatal(1, "FAIL B1 golden x6");
         if (sc_dut.registers[7] !== 32'd0)  $fatal(1, "FAIL B1 golden x7");
         test_count = test_count + 1;
-        $display("  [%02d] Benchmark 1: Core-to-Core & Golden Architectural State Check (x1-x7): MATCH PASS", test_count);
+        $display("  [%02d] Benchmark 1: Core-to-Core & Golden State Check (selected x1-x7): MATCH PASS", test_count);
         $display("");
 
         // =====================================================================
@@ -441,7 +447,7 @@ module tb_single_cycle_comparison;
         if (sc_dut.dmem[19] !== 32'd75)      $fatal(1, "FAIL B2 golden mem[19]");
         if (sc_dut.dmem[20] !== 32'd65)      $fatal(1, "FAIL B2 golden mem[20]");
         test_count = test_count + 1;
-        $display("  [%02d] Benchmark 2: Core-to-Core & Golden Architectural State Check (x1-x12, dmem[16:20]): MATCH PASS", test_count);
+        $display("  [%02d] Benchmark 2: Core-to-Core & Golden State Check (selected x1-x12, dmem[16:20]): MATCH PASS", test_count);
         $display("");
 
         // =====================================================================
@@ -482,7 +488,7 @@ module tb_single_cycle_comparison;
         if (sc_dut.registers[17] !== 32'd0)   $fatal(1, "FAIL B3 golden x17");
         if (sc_dut.dmem[0]       !== 32'd100) $fatal(1, "FAIL B3 golden mem[0]");
         test_count = test_count + 1;
-        $display("  [%02d] Benchmark 3: Core-to-Core & Golden Architectural State Check (x1-x17, dmem[0]): MATCH PASS", test_count);
+        $display("  [%02d] Benchmark 3: Core-to-Core & Golden State Check (selected x1-x17, dmem[0]): MATCH PASS", test_count);
         $display("");
 
         $display("================================================================");

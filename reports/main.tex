@@ -196,28 +196,32 @@ Formulas applied:
 Table~\ref{tab:cpi_ipc} reports the empirical measurements across all three benchmarks.
 
 \begin{table}[htbp]
-\caption{Empirical CPI and IPC Measurements for 5-Stage Pipelined CPU}
+\caption{Empirical Cycle, Hazard, and CPI Measurements for 5-Stage Pipelined CPU}
 \label{tab:cpi_ipc}
 \centering
 \footnotesize
-\begin{tabularx}{\columnwidth}{@{}llccccc@{}}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabularx}{\columnwidth}{@{}Xccccc@{}}
 \toprule
-\textbf{Benchmark} & \textbf{Conv.} & \textbf{Cycles} & \textbf{Instr.} & \textbf{Stalls} & \textbf{Flushes} & \textbf{CPI} \\
+\textbf{Workload \& Measurement Window} & \textbf{Cycles} & \textbf{Instr.} & \textbf{Stalls} & \textbf{Flushes} & \textbf{CPI} \\
 \midrule
-\textbf{Benchmark 1} & A (Workload)   & 39 & 27 & 0 & 5 & \textbf{1.4444} \\
-(Accumulator Loop)   & B (Inclusive)  & 42 & 28 & 0 & 6 & \textbf{1.5000} \\
+\multicolumn{6}{@{}l}{\textbf{Benchmark 1 (Accumulator Loop)}} \\
+\quad Conv.~A (Pure Workload)           & 39 & 27 & 0 & 5 & 1.4444 \\
+\quad Conv.~B (Completion-Inclusive)    & 42 & 28 & 0 & 6 & 1.5000 \\
 \addlinespace
-\textbf{Benchmark 2} & A (Workload)   & 27 & 20 & 3 & 1 & \textbf{1.3500} \\
-(Memory Sequence)    & B (Inclusive)  & 30 & 21 & 3 & 2 & \textbf{1.4286} \\
+\multicolumn{6}{@{}l}{\textbf{Benchmark 2 (Memory Sequence)}} \\
+\quad Conv.~A (Pure Workload)           & 27 & 20 & 3 & 1 & 1.3500 \\
+\quad Conv.~B (Completion-Inclusive)    & 30 & 21 & 3 & 2 & 1.4286 \\
 \addlinespace
-\textbf{Benchmark 3} & A (Workload)   & 25 & 16 & 1 & 3 & \textbf{1.5625} \\
-(Control Hazards)    & B (Inclusive)  & 28 & 17 & 1 & 4 & \textbf{1.6471} \\
+\multicolumn{6}{@{}l}{\textbf{Benchmark 3 (Control Hazards)}} \\
+\quad Conv.~A (Pure Workload)           & 25 & 16 & 1 & 3 & 1.5625 \\
+\quad Conv.~B (Completion-Inclusive)    & 28 & 17 & 1 & 4 & 1.6471 \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
 \subsection{Single-Cycle Baseline Comparison}
-A synthesizable Verilog single-cycle reference processor (\texttt{rtl/reference/single\_cycle\_cpu.v}) was evaluated against the pipelined processor on identical workloads. Table~\ref{tab:single_cycle} summarizes the quantitative cycle and CPI comparison across standard benchmarks and diagnostic microtests.
+A synthesizable Verilog single-cycle reference processor (\texttt{rtl/reference/single\_cycle\_cpu.v}) was evaluated against the pipelined processor on identical workloads. The automated co-simulation testbench records the ordered dynamic retirement sequence of Program Counter (PC) values and the instruction-memory words indexed by those PCs for both implementations. Because the pipelined CPU does not carry a dedicated instruction word bus to the WB stage, the testbench records the instruction word from instruction memory at the retiring PC. Architectural state comparison verifies selected workload-modified registers and memory locations against both each other and golden values; it does not claim exhaustive architectural equivalence across all unexercised registers or arbitrary programs. Table~\ref{tab:single_cycle} summarizes the quantitative cycle, CPI, dynamic trace, and selected architectural state comparison across standard benchmarks and diagnostic microtests.
 
 \begin{table*}[htbp]
 \caption{Pipelined Processor vs. Verilog Single-Cycle Baseline (Pure Workload Window)}
@@ -226,7 +230,7 @@ A synthesizable Verilog single-cycle reference processor (\texttt{rtl/reference/
 \small
 \begin{tabularx}{\textwidth}{@{}llcccccX@{}}
 \toprule
-\textbf{Workload} & \textbf{Architecture} & \textbf{Cycles} & \textbf{Instr.} & \textbf{CPI} & \textbf{IPC} & \textbf{Dynamic Trace} & \textbf{Architectural State Matching} \\
+\textbf{Workload} & \textbf{Architecture} & \textbf{Cycles} & \textbf{Instr.} & \textbf{CPI} & \textbf{IPC} & \textbf{Dynamic Trace (PC \& Word)} & \textbf{Selected Architectural State Matching} \\
 \midrule
 \textbf{Microtest 1} (ADDI) & Single-Cycle Baseline & 1  & 1  & 1.0000 & 1.0000 & 2/2 matched   & Matched ($x1 = 42$) \\
                             & 5-Stage Pipelined CPU & 5  & 1  & 5.0000 & 0.2000 & 2/2 matched   & Matched ($x1 = 42$) \\
@@ -277,31 +281,32 @@ Current processor limitations include:
     \item \textbf{Instruction Subset:} Restricted to 7 core integer instructions; does not yet include \texttt{LUI}, \texttt{AUIPC}, \texttt{JAL}, \texttt{JALR}, shifts, logical ops, or CSR/interrupt support.
 \end{enumerate}
 
-\begin{table*}[!t]
+\section{Individual Contributions}
+The project followed an issue-driven GitHub workflow using feature branches and pull-request code reviews. Table~\ref{tab:contributions} details milestone ownership across the team.
+
+\begin{table}[htbp]
 \caption{Milestone Ownership and Individual Team Contributions}
 \label{tab:contributions}
 \centering
-\begin{tabularx}{\textwidth}{@{}lllX@{}}
+\footnotesize
+\begin{tabularx}{\columnwidth}{@{}lX@{}}
 \toprule
-\textbf{Contributor} & \textbf{GitHub Handle} & \textbf{Assigned Area} & \textbf{Technical Contributions and Scope} \\
+\textbf{Member (GitHub)} & \textbf{Milestone \& Technical Contributions} \\
 \midrule
-Yashkumar Nimje & \texttt{WizardCarp85} & M5 --- Hazard \& Integration & Repository scaffold, contribution workflow (\texttt{CONTRIBUTING.md}), PR templates; implemented hazard detection unit (\texttt{hazard\_detection.v}), forwarding unit (\texttt{forwarding\_unit.v}), branch coordinator (\texttt{branch\_controller.v}), and top-level CPU integration (\texttt{cpu.v}, \texttt{top.v}). \\
+\textbf{Y.~Nimje} & \textbf{M5 (Hazard \& Top Integration):} Repository scaffold, contribution workflow (\texttt{CONTRIBUTING.md}), PR templates; implemented hazard detection unit (\texttt{hazard\_detection.v}), forwarding unit (\texttt{forwarding\_unit.v}), branch coordinator (\texttt{branch\_controller.v}), and top-level CPU integration (\texttt{cpu.v}, \texttt{top.v}). \\
 \addlinespace
-Abhigya Sachdeva & \texttt{ABHIGYA0205} & M3 --- Execute Stage & Implemented ALU (\texttt{alu.v}), ALU control (\texttt{alu\_control.v}), branch unit (\texttt{branch\_unit.v}), EX stage (\texttt{ex\_stage.v}), and EX/MEM register (\texttt{ex\_mem\_reg.v}); authored EX documentation; developed benchmark suites, CPI/IPC measurement harness, and single-cycle reference model. \\
+\textbf{A.~Sachdeva} & \textbf{M3 (Execute Stage):} Implemented ALU (\texttt{alu.v}), ALU control (\texttt{alu\_control.v}), branch unit (\texttt{branch\_unit.v}), EX stage (\texttt{ex\_stage.v}), and EX/MEM register (\texttt{ex\_mem\_reg.v}); authored EX documentation; developed benchmark suites, CPI/IPC measurement harness, and single-cycle reference model. \\
 \addlinespace
-Somraj Nandi & \texttt{somraj112} & M2 --- Instruction Decode & Implemented instruction decoder (\texttt{instruction\_decoder.v}), 32-register register file with WB bypass (\texttt{register\_file.v}), main control unit (\texttt{main\_control.v}), ID stage wrapper (\texttt{id\_stage.v}), and ID/EX register (\texttt{id\_ex\_reg.v}); authored ID documentation and testbenches. \\
+\textbf{S.~Nandi} & \textbf{M2 (Instruction Decode):} Implemented instruction decoder (\texttt{instruction\_decoder.v}), 32-register register file with WB bypass (\texttt{register\_file.v}), main control unit (\texttt{main\_control.v}), ID stage wrapper (\texttt{id\_stage.v}), and ID/EX register (\texttt{id\_ex\_reg.v}); authored ID documentation and testbenches. \\
 \addlinespace
-Rudra Pratap Singh Choudhary & \texttt{Rudra-choudhary} & M4 --- Memory \& Write-Back & Implemented 1~KiB data memory (\texttt{data\_mem.v}), MEM stage wrapper (\texttt{mem\_stage.v}), MEM/WB pipeline register (\texttt{mem\_wb\_reg.v}), and Write-Back selection stage (\texttt{wb\_stage.v}); authored M4 documentation and testbenches. \\
+\textbf{R.~P.~S.~Choudhary} & \textbf{M4 (Memory \& Write-Back):} Implemented 1~KiB data memory (\texttt{data\_mem.v}), MEM stage wrapper (\texttt{mem\_stage.v}), MEM/WB pipeline register (\texttt{mem\_wb\_reg.v}), and Write-Back selection stage (\texttt{wb\_stage.v}); authored M4 documentation and testbenches. \\
 \addlinespace
-Saksham Narotra & \texttt{sakshaaamm} & M1 --- Instruction Fetch & Implemented 32-bit program counter (\texttt{pc.v}), instruction memory (\texttt{instr\_mem.v}), IF stage wrapper (\texttt{if\_stage.v}), and IF/ID pipeline register (\texttt{if\_id\_reg.v}); created hex test images; authored IF documentation and testbenches. \\
+\textbf{S.~Narotra} & \textbf{M1 (Instruction Fetch):} Implemented 32-bit program counter (\texttt{pc.v}), instruction memory (\texttt{instr\_mem.v}), IF stage wrapper (\texttt{if\_stage.v}), and IF/ID pipeline register (\texttt{if\_id\_reg.v}); created hex test images; authored IF documentation and testbenches. \\
 \bottomrule
 \end{tabularx}
 \vspace{2pt}
-\raggedright \small \textit{Note: Individual contribution descriptions reflect assigned project milestones from the repository issue tracker and are flagged for final confirmation by all team members.}
-\end{table*}
-
-\section{Individual Contributions}
-The project followed an issue-driven GitHub workflow using feature branches and pull-request code reviews. Table~\ref{tab:contributions} details milestone ownership across the team.
+\raggedright \scriptsize \textit{Note: Individual contribution descriptions reflect assigned project milestones from the repository issue tracker and are flagged for final confirmation by all team members.}
+\end{table}
 
 \section{Conclusion}
 This project successfully designed, implemented, and verified a five-stage pipelined RV32I processor in Verilog HDL. Full-pipeline integration incorporates operand forwarding, single-cycle load-use stalls, and branch redirection with dual-stage flushing. End-to-end verification across self-checking benchmarks confirmed that all compared architectural state matched against a Verilog single-cycle baseline reference, with measured workload CPI values ranging from 1.3500 to 1.5625. Full-CPU waveform evidence was generated and verified directly from simulation VCD traces. Future extensions include implementing dynamic branch prediction, cache memory interfaces, and the broader RV32I integer instruction set.
